@@ -1,0 +1,64 @@
+{
+  "name": "@argon-sdk/core",
+  "version": "1.0.1",
+  "description": "SDK for building Argon Chat bots",
+  "type": "module",
+  "license": "MIT",
+  "author": "omnifaced",
+  "keywords": [
+    "argon",
+    "bot",
+    "sdk",
+    "framework",
+    "typescript",
+    "api",
+    "middleware",
+    "events",
+    "commands",
+    "controls",
+    "messenger",
+    "chat"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1",
+    "deno": ">=2"
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "lint": "biome lint",
+    "lint:fix": "biome lint --write",
+    "format": "biome format",
+    "format:fix": "biome format --write",
+    "fix": "biome check --write"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@types/bun": "latest",
+    "tsup": "^8.5.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/argon-sdk/core"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
