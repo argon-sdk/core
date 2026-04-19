@@ -1,6 +1,6 @@
 {
   "name": "@argon-sdk/core",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "SDK for building Argon Chat bots",
   "type": "module",
   "license": "MIT",
