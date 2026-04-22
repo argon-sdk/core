@@ -2,7 +2,7 @@ import type { MessageCreateContext } from '../contexts/message-create'
 import type { Filter } from './base'
 
 import { makeFilter } from './base'
-import { EventType } from '../events'
+import { EventType } from '../events/types'
 import { text as textPredicate } from './predicates'
 
 /** Extended filter for message creation events with text matching */

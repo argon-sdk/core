@@ -2,7 +2,7 @@ import type { CommandContext } from '../contexts/command-interaction'
 import type { Filter } from './base'
 
 import { makeFilter } from './base'
-import { EventType } from '../events'
+import { EventType } from '../events/types'
 
 interface CommandInteractionFilter extends Filter<CommandContext> {
   name(match: string | RegExp): CommandInteractionFilter

@@ -2,7 +2,7 @@ import type { SelectInteractionContext } from '../contexts/select-interaction'
 import type { Filter } from './base'
 
 import { makeFilter } from './base'
-import { EventType } from '../events'
+import { EventType } from '../events/types'
 
 /** Extended filter for select menu interactions with ID matching */
 export interface SelectInteractionFilter extends Filter<SelectInteractionContext> {

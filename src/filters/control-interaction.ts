@@ -2,7 +2,7 @@ import type { ControlInteractionContext } from '../contexts/control-interaction'
 import type { Filter } from './base'
 
 import { makeFilter } from './base'
-import { EventType } from '../events'
+import { EventType } from '../events/types'
 
 /** Extended filter for control interactions with ID matching */
 export interface ControlInteractionFilter extends Filter<ControlInteractionContext> {

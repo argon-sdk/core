@@ -2,7 +2,7 @@ import type { ModalSubmitContext } from '../contexts/modal-submit'
 import type { Filter } from './base'
 
 import { makeFilter } from './base'
-import { EventType } from '../events'
+import { EventType } from '../events/types'
 
 /** Extended filter for modal submissions with modal ID matching */
 export interface ModalSubmitFilter extends Filter<ModalSubmitContext> {
