@@ -282,3 +282,4 @@ export type {
 
 export type { Services } from './core/plugin'
 export type { Plugin } from './core/plugin'
+export { definePlugin } from './core/define-plugin'

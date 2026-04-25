@@ -13,16 +13,20 @@ export interface BuiltCommandOption {
 }
 
 /** Fully resolved command definition ready for registration */
-export interface BuiltCommand {
+export interface BuiltCommand<TDec = {}> {
   name: string
   nameLocalizations: Record<string, string>
   description: string
   descriptionLocalizations: Record<string, string>
   options: BuiltCommandOption[]
-  handler: (ctx: CommandContext, opts: Record<string, unknown>) => Promise<void>
+  handler: (ctx: CommandContext & TDec, opts: Record<string, unknown>) => Promise<void>
 }
 
-type ExtractOpts<Tokens extends CommandToken[]> = Tokens extends [infer Head, ...infer Tail extends CommandToken[]]
+/** Extracts the option key/value record from a tuple of command tokens */
+export type ExtractOpts<Tokens extends CommandToken[]> = Tokens extends [
+  infer Head,
+  ...infer Tail extends CommandToken[],
+]
   ? Head extends OptionToken<infer K, infer V>
     ? Record<K, V> & ExtractOpts<Tail>
     : ExtractOpts<Tail>
@@ -31,13 +35,15 @@ type ExtractOpts<Tokens extends CommandToken[]> = Tokens extends [infer Head, ..
 type Prettify<T> = { [K in keyof T]: T[K] } & {}
 
 /** Intermediate command definition awaiting a run handler */
-export interface CommandDefinition<Opts> {
-  run(handler: (ctx: CommandContext, opts: Prettify<Opts>) => Promise<void>): BuiltCommand
+export interface CommandDefinition<Opts, TDec = {}> {
+  run(handler: (ctx: CommandContext & TDec, opts: Prettify<Opts>) => Promise<void>): BuiltCommand<TDec>
 }
 
 /** Creates a command from tokens or returns a CommandBuilder when called without arguments */
-export function command(): CommandBuilder
-export function command<const Tokens extends CommandToken[]>(...tokens: Tokens): CommandDefinition<ExtractOpts<Tokens>>
+export function command<TDec = {}>(): CommandBuilder<{}, TDec>
+export function command<TDec = {}, const Tokens extends CommandToken[] = []>(
+  ...tokens: Tokens
+): CommandDefinition<ExtractOpts<Tokens>, TDec>
 export function command(...tokens: any[]) {
   if (tokens.length === 0) {
     return new CommandBuilder()

@@ -6,12 +6,13 @@ import { BaseContext } from '../contexts/base'
 import type { ContextMap } from '../contexts/registry'
 import type { GroupUse } from './group'
 import type { SseOptions } from '../transport/sse'
-import type { BuiltCommand } from '../commands'
+import type { BuiltCommand, CommandDefinition, CommandToken, ExtractOpts } from '../commands'
 import type { CommandContext } from '../contexts/command-interaction'
 import type { Snowflake } from '../types'
-import type { ControlHandler, SelectHandler } from '../controls'
-import type { SseEventMap, ControlInteractionPayload, SelectInteractionPayload } from '../events'
+import type { ControlHandler, SelectHandler, Row, ControlBuilder } from '../controls'
 import type { Plugin } from './plugin'
+import type { ButtonNamespace, SelectNamespace, ModalBuilder, ModalDefinition, ModalControlDef } from '../controls'
+import type { SseEventMap, ControlInteractionPayload, SelectInteractionPayload } from '../events'
 
 import { ApiClient } from '../api/client'
 import { SseTransport } from '../transport/sse'
@@ -20,6 +21,16 @@ import { buildContext } from '../contexts/registry'
 import { createGroup } from './group'
 import { Intent } from '../types'
 import { syncCommands } from '../commands'
+import { command as _commandGlobal, CommandBuilder } from '../commands'
+import {
+  button as _buttonGlobal,
+  stringSelect as _stringSelectGlobal,
+  userSelect as _userSelectGlobal,
+  archetypeSelect as _archetypeSelectGlobal,
+  channelSelect as _channelSelectGlobal,
+  modal as _modalGlobal,
+  row as _rowGlobal,
+} from '../controls'
 import { on } from './on'
 import { invoke } from '../filters/command-interaction'
 import { makeFilter } from '../filters/base'
@@ -43,8 +54,15 @@ export interface CommandsOptions {
 
 const DEFAULT_BASE_URL = 'https://gateway.argon.zone'
 
-/** Main bot class that manages transport, middleware pipeline, plugins and event handling */
-export class Bot {
+/**
+ * Main bot class that manages transport, middleware pipeline, plugins and event handling.
+ *
+ * @typeParam TDec - Accumulated decorator map injected by registered plugins via `.plugin(...)`.
+ * Each handler context (`message.create`, command runners, button `.on()`, etc.) is typed as
+ * `CtxBase & TDec`, so plugin-provided properties like `ctx.t` appear automatically with no
+ * `declare module` boilerplate.
+ */
+export class Bot<TDec extends Record<string, unknown> = {}> {
   readonly api: ApiClient
 
   private readonly _services = new Map<string, unknown>()
@@ -79,7 +97,9 @@ export class Bot {
     this.transport = new SseTransport(token, baseUrl, intents, options.sse, debug)
   }
 
-  plugin(...plugins: Plugin[]): this {
+  plugin<TName extends string, TValue>(
+    ...plugins: Plugin<TName, TValue>[]
+  ): Bot<TDec & { readonly [K in TName]: TValue }> {
     for (const p of plugins) {
       const value = p.build()
       this._services.set(p.name, value)
@@ -97,19 +117,19 @@ export class Bot {
       })
     }
 
-    return this
+    return this as unknown as Bot<TDec & { readonly [K in TName]: TValue }>
   }
 
-  use(...middlewares: Middleware[]): this {
+  use(...middlewares: Middleware<BaseContext & TDec>[]): this {
     for (const middleware of middlewares) {
-      this.pipeline.use(middleware)
+      this.pipeline.use(middleware as Middleware)
     }
 
     return this
   }
 
-  on<C extends BaseContext>(filter: Filter<C>, ...handlers: Middleware<C>[]): this
-  on<K extends keyof ContextMap>(event: K, ...handlers: Middleware<ContextMap[K]>[]): this
+  on<C extends BaseContext>(filter: Filter<C>, ...handlers: Middleware<C & TDec>[]): this
+  on<K extends keyof ContextMap>(event: K, ...handlers: Middleware<ContextMap[K] & TDec>[]): this
   on(filterOrEvent: Filter | string, ...handlers: Middleware[]): this {
     if (typeof filterOrEvent === 'string') {
       const filter = makeFilter(filterOrEvent as keyof SseEventMap, () => true)
@@ -121,8 +141,8 @@ export class Bot {
     return this
   }
 
-  group<C extends BaseContext>(filter: Filter<C>, setup: (use: GroupUse<C>) => void): this
-  group<K extends keyof ContextMap>(event: K, setup: (use: GroupUse<ContextMap[K]>) => void): this
+  group<C extends BaseContext>(filter: Filter<C>, setup: (use: GroupUse<C & TDec>) => void): this
+  group<K extends keyof ContextMap>(event: K, setup: (use: GroupUse<ContextMap[K] & TDec>) => void): this
   group(filterOrEvent: Filter | string, setup: (use: GroupUse<any>) => void): this {
     if (typeof filterOrEvent === 'string') {
       const filter = makeFilter(filterOrEvent as keyof SseEventMap, () => true)
@@ -134,15 +154,15 @@ export class Bot {
     return this
   }
 
-  commands(...args: [...BuiltCommand[], CommandsOptions] | BuiltCommand[]): this {
+  commands(...args: [...BuiltCommand<TDec>[], CommandsOptions] | BuiltCommand<TDec>[]): this {
     const last = args[args.length - 1]
     const hasOptions = last !== null && typeof last === 'object' && !('name' in last)
     const options: CommandsOptions = hasOptions ? (last as CommandsOptions) : {}
-    const commandList = (hasOptions ? args.slice(0, -1) : args) as BuiltCommand[]
+    const commandList = (hasOptions ? args.slice(0, -1) : args) as BuiltCommand<TDec>[]
 
     for (const builtCommand of commandList) {
       this.registeredCommands.push({
-        command: builtCommand,
+        command: builtCommand as BuiltCommand,
         spaceId: options.spaceId,
       })
 
@@ -162,12 +182,57 @@ export class Bot {
             }
           }
 
-          await builtCommand.handler(ctx, opts)
+          await builtCommand.handler(ctx as CommandContext & TDec, opts)
         }),
       )
     }
 
     return this
+  }
+
+  /**
+   * Bot-bound command factory. Returns a builder/definition whose `.run()` handler
+   * receives a context typed with the bot's accumulated decorators (`TDec`).
+   */
+  command(): CommandBuilder<{}, TDec>
+  command<const Tokens extends CommandToken[]>(...tokens: Tokens): CommandDefinition<ExtractOpts<Tokens>, TDec>
+  command(...tokens: any[]): any {
+    if (tokens.length === 0) {
+      return new CommandBuilder<{}, TDec>()
+    }
+
+    return (_commandGlobal as any)(...tokens)
+  }
+
+  /** Bot-bound button factory. Builders' `.on()` callback receives `ControlInteractionContext & TDec`. */
+  get button(): ButtonNamespace<TDec> {
+    return _buttonGlobal as unknown as ButtonNamespace<TDec>
+  }
+
+  /** Bot-bound select factory. Builders' `.on()` callback receives `SelectInteractionContext & TDec`. */
+  get select(): SelectNamespace<TDec> {
+    return {
+      string: _stringSelectGlobal,
+      user: _userSelectGlobal,
+      archetype: _archetypeSelectGlobal,
+      channel: _channelSelectGlobal,
+    } as unknown as SelectNamespace<TDec>
+  }
+
+  /** Bot-bound modal factory. Modals inherit decorators implicitly through `bot.on(modal.submit, ...)`. */
+  modal(): ModalBuilder
+  modal(customId: string, title: string, ...controls: ModalControlDef[]): ModalDefinition
+  modal(customId?: string, title?: string, ...controls: ModalControlDef[]): ModalBuilder | ModalDefinition {
+    if (customId === undefined) {
+      return _modalGlobal()
+    }
+
+    return _modalGlobal(customId, title!, ...controls)
+  }
+
+  /** Bot-bound row factory. Rows themselves don't carry handlers — handlers live on the controls inside. */
+  row(...controls: ControlBuilder[]): Row {
+    return _rowGlobal(...controls)
   }
 
   async start(): Promise<void> {

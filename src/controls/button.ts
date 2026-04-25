@@ -22,9 +22,9 @@ export interface Button {
 }
 
 /** Fluent builder for constructing button controls */
-export class ButtonBuilder implements ControlBuilder<Button> {
+export class ButtonBuilder<TDec = {}> implements ControlBuilder<Button> {
   private readonly data: Button
-  private handler?: ControlHandler
+  private handler?: ControlHandler<TDec>
 
   constructor(variant?: ButtonVariant) {
     this.data = {
@@ -74,14 +74,14 @@ export class ButtonBuilder implements ControlBuilder<Button> {
     return this
   }
 
-  on(handler: ControlHandler): this {
+  on(handler: ControlHandler<TDec>): this {
     this.handler = handler
     return this
   }
 
   getHandler(): { id: string; handler: ControlHandler } | null {
     if (this.handler && this.data.customId) {
-      return { id: this.data.customId, handler: this.handler }
+      return { id: this.data.customId, handler: this.handler as unknown as ControlHandler }
     }
 
     return null
@@ -109,11 +109,11 @@ function applyLabelTokens(builder: ButtonBuilder, tokens: NameToken[]): void {
 }
 
 /** Namespace providing callback and link button factory methods */
-export interface ButtonNamespace {
-  callback(): ButtonBuilder
-  callback(first: NameToken | NameToken[], ...rest: NameToken[]): ButtonBuilder
-  link(): ButtonBuilder
-  link(first: NameToken | NameToken[], ...rest: NameToken[]): ButtonBuilder
+export interface ButtonNamespace<TDec = {}> {
+  callback(): ButtonBuilder<TDec>
+  callback(first: NameToken | NameToken[], ...rest: NameToken[]): ButtonBuilder<TDec>
+  link(): ButtonBuilder<TDec>
+  link(first: NameToken | NameToken[], ...rest: NameToken[]): ButtonBuilder<TDec>
 }
 
 /** Factory for creating callback and link buttons with optional label tokens */

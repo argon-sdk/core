@@ -9,6 +9,7 @@ export {
 } from './tokens'
 
 export { string, integer, number, boolean, user, channel, role, type OptionDef, type OptionMeta } from './option'
-export type { BuiltCommand, BuiltCommandOption, CommandDefinition } from './builder'
+export type { BuiltCommand, BuiltCommandOption, CommandDefinition, ExtractOpts } from './builder'
+export { command } from './builder'
 export { CommandBuilder } from './command-builder'
 export { syncCommands } from './sync'

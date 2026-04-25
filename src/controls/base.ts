@@ -31,9 +31,9 @@ export const ButtonVariant = {
 export type ButtonVariant = (typeof ButtonVariant)[keyof typeof ButtonVariant]
 
 /** Handler invoked on button interaction */
-export type ControlHandler = (ctx: ControlInteractionContext) => Promise<void>
+export type ControlHandler<TDec = {}> = (ctx: ControlInteractionContext & TDec) => Promise<void>
 /** Handler invoked on select menu interaction */
-export type SelectHandler = (ctx: SelectInteractionContext) => Promise<void>
+export type SelectHandler<TDec = {}> = (ctx: SelectInteractionContext & TDec) => Promise<void>
 
 /** Symbol key for storing button handler map on a row */
 export const CONTROL_HANDLERS = Symbol('controlHandlers')

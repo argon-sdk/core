@@ -99,7 +99,7 @@ class OptionAdder {
 }
 
 /** Fluent builder for constructing slash commands with options */
-export class CommandBuilder<Opts = {}> {
+export class CommandBuilder<Opts = {}, TDec = {}> {
   private _name = ''
   private _description = ''
   private readonly _nameLocalizations: Record<string, string> = {}
@@ -128,7 +128,7 @@ export class CommandBuilder<Opts = {}> {
 
   addOption<B extends OptionBuilder<any, any>>(
     factory: (adder: OptionAdder) => B,
-  ): CommandBuilder<Opts & ExtractOptionType<B>> {
+  ): CommandBuilder<Opts & ExtractOptionType<B>, TDec> {
     const builder = factory(new OptionAdder())
     this._optionBuilders.push(builder)
     return this as any
@@ -136,7 +136,7 @@ export class CommandBuilder<Opts = {}> {
 
   addOptions<B extends OptionBuilder<any, any>[]>(
     factory: (adder: OptionAdder) => [...B],
-  ): CommandBuilder<Opts & ExtractOptionsFromArray<B>> {
+  ): CommandBuilder<Opts & ExtractOptionsFromArray<B>, TDec> {
     const builders = factory(new OptionAdder())
 
     for (const builder of builders) {
@@ -146,7 +146,7 @@ export class CommandBuilder<Opts = {}> {
     return this as any
   }
 
-  run(handler: (ctx: CommandContext, opts: Prettify<Opts>) => Promise<void>): BuiltCommand {
+  run(handler: (ctx: CommandContext & TDec, opts: Prettify<Opts>) => Promise<void>): BuiltCommand<TDec> {
     const options: BuiltCommandOption[] = []
 
     for (const builder of this._optionBuilders) {
@@ -163,7 +163,7 @@ export class CommandBuilder<Opts = {}> {
       description: this._description,
       descriptionLocalizations: { ...this._descriptionLocalizations },
       options,
-      handler: handler as (ctx: CommandContext, opts: Record<string, unknown>) => Promise<void>,
+      handler: handler as (ctx: CommandContext & TDec, opts: Record<string, unknown>) => Promise<void>,
     }
   }
 }

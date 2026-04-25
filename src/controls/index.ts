@@ -19,7 +19,7 @@ export {
 } from './modal'
 
 export { button, ButtonBuilder } from './button'
-export type { Button } from './button'
+export type { Button, ButtonNamespace } from './button'
 
 export {
   stringSelect,
@@ -34,6 +34,7 @@ export type {
   UserSelect,
   ArchetypeSelect,
   ChannelSelect,
+  SelectNamespace,
 } from './select'
 
 export { row } from './row'

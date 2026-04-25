@@ -52,11 +52,11 @@ export interface ChannelSelect {
 }
 
 /** Fluent builder for constructing select menu controls */
-export class SelectBuilder<T extends StringSelect | UserSelect | ArchetypeSelect | ChannelSelect>
+export class SelectBuilder<T extends StringSelect | UserSelect | ArchetypeSelect | ChannelSelect, TDec = {}>
   implements ControlBuilder<T>
 {
   protected readonly data: T
-  private handler?: SelectHandler
+  private handler?: SelectHandler<TDec>
 
   constructor(type: T['type']) {
     this.data = { type, customId: '' } as T
@@ -102,14 +102,14 @@ export class SelectBuilder<T extends StringSelect | UserSelect | ArchetypeSelect
     return this
   }
 
-  on(handler: SelectHandler): this {
+  on(handler: SelectHandler<TDec>): this {
     this.handler = handler
     return this
   }
 
   getSelectHandler(): { id: string; handler: SelectHandler } | null {
     if (this.handler && this.data.customId) {
-      return { id: this.data.customId, handler: this.handler }
+      return { id: this.data.customId, handler: this.handler as unknown as SelectHandler }
     }
 
     return null
@@ -120,15 +120,15 @@ export class SelectBuilder<T extends StringSelect | UserSelect | ArchetypeSelect
   }
 }
 
-class StringSelectBuilder extends SelectBuilder<StringSelect> {
+class StringSelectBuilder<TDec = {}> extends SelectBuilder<StringSelect, TDec> {
   constructor() {
     super('stringSelect')
     ;(this.data as StringSelect).options = []
   }
 }
 
-function applyPlaceholderTokens<T extends StringSelect | UserSelect | ArchetypeSelect | ChannelSelect>(
-  builder: SelectBuilder<T>,
+function applyPlaceholderTokens<T extends StringSelect | UserSelect | ArchetypeSelect | ChannelSelect, TDec>(
+  builder: SelectBuilder<T, TDec>,
   tokens: NameToken[],
 ): void {
   const localizations: Record<string, string> = {}
@@ -147,10 +147,13 @@ function applyPlaceholderTokens<T extends StringSelect | UserSelect | ArchetypeS
 }
 
 /** Creates a string select menu with predefined options */
-export function stringSelect(): StringSelectBuilder
-export function stringSelect(first: NameToken | NameToken[], ...rest: NameToken[]): StringSelectBuilder
-export function stringSelect(first?: NameToken | NameToken[], ...rest: NameToken[]): StringSelectBuilder {
-  const builder = new StringSelectBuilder()
+export function stringSelect<TDec = {}>(): StringSelectBuilder<TDec>
+export function stringSelect<TDec = {}>(first: NameToken | NameToken[], ...rest: NameToken[]): StringSelectBuilder<TDec>
+export function stringSelect<TDec = {}>(
+  first?: NameToken | NameToken[],
+  ...rest: NameToken[]
+): StringSelectBuilder<TDec> {
+  const builder = new StringSelectBuilder<TDec>()
 
   if (first) {
     const tokens = Array.isArray(first) ? first : [first, ...rest]
@@ -161,10 +164,16 @@ export function stringSelect(first?: NameToken | NameToken[], ...rest: NameToken
 }
 
 /** Creates a user select menu for picking members */
-export function userSelect(): SelectBuilder<UserSelect>
-export function userSelect(first: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<UserSelect>
-export function userSelect(first?: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<UserSelect> {
-  const builder = new SelectBuilder<UserSelect>('userSelect')
+export function userSelect<TDec = {}>(): SelectBuilder<UserSelect, TDec>
+export function userSelect<TDec = {}>(
+  first: NameToken | NameToken[],
+  ...rest: NameToken[]
+): SelectBuilder<UserSelect, TDec>
+export function userSelect<TDec = {}>(
+  first?: NameToken | NameToken[],
+  ...rest: NameToken[]
+): SelectBuilder<UserSelect, TDec> {
+  const builder = new SelectBuilder<UserSelect, TDec>('userSelect')
 
   if (first) {
     const tokens = Array.isArray(first) ? first : [first, ...rest]
@@ -175,10 +184,16 @@ export function userSelect(first?: NameToken | NameToken[], ...rest: NameToken[]
 }
 
 /** Creates an archetype (role) select menu */
-export function archetypeSelect(): SelectBuilder<ArchetypeSelect>
-export function archetypeSelect(first: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<ArchetypeSelect>
-export function archetypeSelect(first?: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<ArchetypeSelect> {
-  const builder = new SelectBuilder<ArchetypeSelect>('archetypeSelect')
+export function archetypeSelect<TDec = {}>(): SelectBuilder<ArchetypeSelect, TDec>
+export function archetypeSelect<TDec = {}>(
+  first: NameToken | NameToken[],
+  ...rest: NameToken[]
+): SelectBuilder<ArchetypeSelect, TDec>
+export function archetypeSelect<TDec = {}>(
+  first?: NameToken | NameToken[],
+  ...rest: NameToken[]
+): SelectBuilder<ArchetypeSelect, TDec> {
+  const builder = new SelectBuilder<ArchetypeSelect, TDec>('archetypeSelect')
 
   if (first) {
     const tokens = Array.isArray(first) ? first : [first, ...rest]
@@ -189,10 +204,16 @@ export function archetypeSelect(first?: NameToken | NameToken[], ...rest: NameTo
 }
 
 /** Creates a channel select menu */
-export function channelSelect(): SelectBuilder<ChannelSelect>
-export function channelSelect(first: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<ChannelSelect>
-export function channelSelect(first?: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<ChannelSelect> {
-  const builder = new SelectBuilder<ChannelSelect>('channelSelect')
+export function channelSelect<TDec = {}>(): SelectBuilder<ChannelSelect, TDec>
+export function channelSelect<TDec = {}>(
+  first: NameToken | NameToken[],
+  ...rest: NameToken[]
+): SelectBuilder<ChannelSelect, TDec>
+export function channelSelect<TDec = {}>(
+  first?: NameToken | NameToken[],
+  ...rest: NameToken[]
+): SelectBuilder<ChannelSelect, TDec> {
+  const builder = new SelectBuilder<ChannelSelect, TDec>('channelSelect')
 
   if (first) {
     const tokens = Array.isArray(first) ? first : [first, ...rest]
@@ -200,4 +221,16 @@ export function channelSelect(first?: NameToken | NameToken[], ...rest: NameToke
   }
 
   return builder
+}
+
+/** Namespace providing typed select factory methods */
+export interface SelectNamespace<TDec = {}> {
+  string(): SelectBuilder<StringSelect, TDec>
+  string(first: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<StringSelect, TDec>
+  user(): SelectBuilder<UserSelect, TDec>
+  user(first: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<UserSelect, TDec>
+  archetype(): SelectBuilder<ArchetypeSelect, TDec>
+  archetype(first: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<ArchetypeSelect, TDec>
+  channel(): SelectBuilder<ChannelSelect, TDec>
+  channel(first: NameToken | NameToken[], ...rest: NameToken[]): SelectBuilder<ChannelSelect, TDec>
 }

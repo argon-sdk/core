@@ -333,6 +333,49 @@ bot.use(async (ctx, next) => {
 })
 ```
 
+## Writing a plugin
+
+Plugins inject a service that becomes available on every context. Use `definePlugin` to keep the literal name and value type — the `Bot<TDecorators>` generic accumulates them automatically. **No `declare module` augmentation needed in consumer code.**
+
+```ts
+// my-plugin/src/index.ts
+import { definePlugin } from '@argon-sdk/core'
+
+export const myPlugin = (config: Config) =>
+  definePlugin('myService', () => buildService(config))
+// → Plugin<'myService', MyService>
+```
+
+Consumer:
+
+```ts
+const bot = new Bot(token).plugin(myPlugin(cfg))
+
+bot.on(message.create, async (ctx) => {
+  ctx.myService.doThing() // typed automatically — no .d.ts
+})
+```
+
+For nested handlers (button/select callbacks), construct controls via the bot-bound factories so decorators thread through:
+
+```ts
+bot.on(message.create, async (ctx) => {
+  await ctx.reply('Pick:', {
+    controls: [
+      bot.row(
+        bot.button.callback(name('Confirm'))
+          .id('confirm')
+          .on(async (innerCtx) => {
+            innerCtx.myService.log('clicked') // typed
+          }),
+      ),
+    ],
+  })
+})
+```
+
+The standalone `button.callback(...)` / `command(...)` / `row(...)` exports still work — they default to `Bot<{}>`, so nested handlers won't see plugin types.
+
 ## License
 
 MIT
