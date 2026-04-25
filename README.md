@@ -127,6 +127,52 @@ bot.on('modalSubmit', async (ctx) => {
 })
 ```
 
+### Bot lifecycle
+
+```ts
+import { botLifecycle } from '@argon-sdk/core'
+
+bot.on(botLifecycle.installing, async (ctx) => {
+  console.log('installed into space', ctx.spaceId)
+})
+
+bot.on(botLifecycle.entitlementsUpdated, async (ctx) => {
+  console.log(
+    `space ${ctx.spaceId}: granted=${ctx.grantedEntitlements} required=${ctx.requiredEntitlements}`,
+  )
+})
+```
+
+`botLifecycle.entitlementsUpdated` fires whenever the space's granted entitlements drift from what the bot requires — handy for surfacing a re-authorize prompt. Always delivered, no intent needed.
+
+### Voice & calls
+
+Voice channel join/leave events are unprivileged (`Intent.Voice`). Call lifecycle events (`Intent.Calls`) are **verified-bot only**.
+
+```ts
+import { voice, call } from '@argon-sdk/core'
+
+bot.on(voice.join, async (ctx) => {
+  console.log(`${ctx.displayName} joined voice ${ctx.channelId}`)
+})
+
+bot.on(voice.leave, async (ctx) => {
+  console.log(`${ctx.displayName} left voice ${ctx.channelId}`)
+})
+
+bot.on(call.incoming, async (ctx) => {
+  await ctx.accept() // or ctx.reject('busy')
+})
+
+bot.on(call.ended, async (ctx) => {
+  console.log('call ended:', ctx.callId)
+})
+```
+
+The audio data plane (LiveKit room, Opus codec) is not part of `@argon-sdk/core` — it's handled by the separate `@argon-sdk/voice` plugin (analogous to `@discordjs/voice`).
+
+Low-level API endpoints are accessible via `bot.api.voice`, `bot.api.calls`, `bot.api.voiceEgress` if you need them directly.
+
 ## Controls
 
 ### Buttons

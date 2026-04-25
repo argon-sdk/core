@@ -29,6 +29,11 @@ export const EventType = {
   ArchetypeUpdate: 'archetypeUpdate',
   ReactionAdd: 'reactionAdd',
   ReactionRemove: 'reactionRemove',
+  BotEntitlementsUpdated: 'botEntitlementsUpdated',
+  VoiceJoin: 'voiceJoin',
+  VoiceLeave: 'voiceLeave',
+  CallIncoming: 'callIncoming',
+  CallEnded: 'callEnded',
 } as const
 
 /** Union of all event type string literals */
@@ -128,6 +133,13 @@ export interface BotSpacePayload {
   spaceId: Snowflake
 }
 
+/** Payload received when the bot's required entitlements diverge from a space's granted set */
+export interface BotEntitlementsUpdatedPayload {
+  grantedEntitlements: EntitlementName
+  requiredEntitlements: EntitlementName
+  spaceId: Snowflake
+}
+
 /** Payload received when a user interacts with a select menu */
 export interface SelectInteractionPayload {
   interactionId: Snowflake
@@ -148,6 +160,47 @@ export interface ModalSubmitPayload {
   spaceId: Snowflake
   user: User
   values: Record<string, string>
+}
+
+/** Wire-format string-enum names for entitlements (matches the API enum, distinct from the BigInt bitmask `Entitlement`) */
+export type EntitlementName =
+  | 'none'
+  | 'viewChannel'
+  | 'readHistory'
+  | 'joinToVoice'
+  | 'sendMessages'
+  | 'sendVoice'
+  | 'attachFiles'
+  | 'addReactions'
+  | 'anyMentions'
+  | 'mentionEveryone'
+  | 'externalEmoji'
+  | 'externalStickers'
+  | 'useCommands'
+  | 'postEmbeddedLinks'
+  | 'connect'
+  | 'speak'
+  | 'video'
+  | 'stream'
+  | 'useASIO'
+  | 'additionalStreams'
+  | 'disconnectMember'
+  | 'moveMember'
+  | 'banMember'
+  | 'muteMember'
+  | 'kickMember'
+  | 'manageChannels'
+  | 'manageArchetype'
+  | 'manageBots'
+  | 'manageEvents'
+  | 'manageBehaviour'
+  | 'manageServer'
+
+/** Per-space membership info delivered in the Ready event */
+export interface BotSpaceInfo {
+  spaceId: Snowflake
+  grantedEntitlements: EntitlementName
+  pendingApproval: boolean
 }
 
 /** Possible user presence statuses */
@@ -185,9 +238,40 @@ export interface ReactionPayload {
   userId: Snowflake
 }
 
+/** Payload received when a user joins a voice channel */
+export interface VoiceJoinPayload {
+  spaceId: Snowflake
+  channelId: Snowflake
+  user: User
+}
+
+/** Payload received when a user leaves a voice channel */
+export interface VoiceLeavePayload {
+  spaceId: Snowflake
+  channelId: Snowflake
+  user: User
+}
+
+/** Payload received when a verified bot is being called */
+export interface CallIncomingPayload {
+  callId: Snowflake
+  fromUserId: Snowflake
+}
+
+/** Payload received when an active call ends */
+export interface CallEndedPayload {
+  callId: Snowflake
+}
+
+/** Payload received on initial SSE connection */
+export interface ReadyPayload {
+  intents: number
+  spaces: BotSpaceInfo[]
+}
+
 /** Maps each event type string to its corresponding payload type */
 export interface SseEventMap {
-  ready: { intents: number; spaceIds: Snowflake[] }
+  ready: ReadyPayload
   heartbeat: null
   resumed: null
 
@@ -210,6 +294,7 @@ export interface SseEventMap {
 
   botInstallingToSpace: BotSpacePayload
   botUninstallingFromSpace: BotSpacePayload
+  botEntitlementsUpdated: BotEntitlementsUpdatedPayload
 
   typingStart: TypingPayload
   typingStop: TypingPayload
@@ -219,6 +304,12 @@ export interface SseEventMap {
 
   reactionAdd: ReactionPayload
   reactionRemove: ReactionPayload
+
+  voiceJoin: VoiceJoinPayload
+  voiceLeave: VoiceLeavePayload
+
+  callIncoming: CallIncomingPayload
+  callEnded: CallEndedPayload
 }
 
 /** A single SSE event with typed payload */

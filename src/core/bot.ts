@@ -41,7 +41,7 @@ export interface CommandsOptions {
   spaceId?: Snowflake
 }
 
-const DEFAULT_BASE_URL = 'https://api.argon.gl'
+const DEFAULT_BASE_URL = 'https://gateway.argon.zone'
 
 /** Main bot class that manages transport, middleware pipeline, plugins and event handling */
 export class Bot {

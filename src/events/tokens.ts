@@ -7,6 +7,7 @@ import type { ChannelDeleteContext } from '../contexts/channel-delete'
 import type { PresenceUpdateContext } from '../contexts/presence-update'
 import type { BotInstallingContext } from '../contexts/bot-installing'
 import type { BotUninstallingContext } from '../contexts/bot-uninstalling'
+import type { BotEntitlementsUpdatedContext } from '../contexts/bot-entitlements-updated'
 import type { TypingStartContext } from '../contexts/typing-start'
 import type { TypingStopContext } from '../contexts/typing-stop'
 import type { ArchetypeCreateContext } from '../contexts/archetype-create'
@@ -16,6 +17,10 @@ import type { ReactionRemoveContext } from '../contexts/reaction-remove'
 import type { ReadyContext } from '../contexts/ready'
 import type { HeartbeatContext } from '../contexts/heartbeat'
 import type { ResumedContext } from '../contexts/resumed'
+import type { VoiceJoinContext } from '../contexts/voice-join'
+import type { VoiceLeaveContext } from '../contexts/voice-leave'
+import type { CallIncomingContext } from '../contexts/call-incoming'
+import type { CallEndedContext } from '../contexts/call-ended'
 import type { Filter } from '../filters/base'
 import type { MessageCreateFilter } from '../filters/message-create'
 import type { ControlInteractionFilter } from '../filters/control-interaction'
@@ -90,13 +95,15 @@ export const presence: {
   update: makeFilter<PresenceUpdateContext>(EventType.PresenceUpdate, () => true),
 }
 
-/** Event filters for bot install/uninstall lifecycle */
+/** Event filters for bot install/uninstall lifecycle and entitlement drift */
 export const botLifecycle: {
   installing: Filter<BotInstallingContext>
   uninstalling: Filter<BotUninstallingContext>
+  entitlementsUpdated: Filter<BotEntitlementsUpdatedContext>
 } = {
   installing: makeFilter<BotInstallingContext>(EventType.BotInstallingToSpace, () => true),
   uninstalling: makeFilter<BotUninstallingContext>(EventType.BotUninstallingFromSpace, () => true),
+  entitlementsUpdated: makeFilter<BotEntitlementsUpdatedContext>(EventType.BotEntitlementsUpdated, () => true),
 }
 
 /** Event filters for typing indicator events */
@@ -124,6 +131,24 @@ export const reaction: {
 } = {
   add: makeFilter<ReactionAddContext>(EventType.ReactionAdd, () => true),
   remove: makeFilter<ReactionRemoveContext>(EventType.ReactionRemove, () => true),
+}
+
+/** Event filters for voice channel join/leave events */
+export const voice: {
+  join: Filter<VoiceJoinContext>
+  leave: Filter<VoiceLeaveContext>
+} = {
+  join: makeFilter<VoiceJoinContext>(EventType.VoiceJoin, () => true),
+  leave: makeFilter<VoiceLeaveContext>(EventType.VoiceLeave, () => true),
+}
+
+/** Event filters for call lifecycle events (verified bots only) */
+export const call: {
+  incoming: Filter<CallIncomingContext>
+  ended: Filter<CallEndedContext>
+} = {
+  incoming: makeFilter<CallIncomingContext>(EventType.CallIncoming, () => true),
+  ended: makeFilter<CallEndedContext>(EventType.CallEnded, () => true),
 }
 
 /** Event filter for the initial ready event after connection */

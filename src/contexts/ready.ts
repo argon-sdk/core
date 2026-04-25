@@ -1,14 +1,9 @@
 import type { ApiClient } from '../api/client'
-import type { Snowflake } from '../types'
+import type { ReadyPayload, BotSpaceInfo } from '../events'
 import type { RegisterControlHandler, RegisterSelectHandler } from './base'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
-
-interface ReadyPayload {
-  intents: number
-  spaceIds: Snowflake[]
-}
 
 /** Context for the initial ready event after connection */
 export class ReadyContext extends BaseContext {
@@ -29,7 +24,8 @@ export class ReadyContext extends BaseContext {
   get intents(): number {
     return this.payload.intents
   }
-  get spaceIds(): Snowflake[] {
-    return this.payload.spaceIds
+
+  get spaces(): BotSpaceInfo[] {
+    return this.payload.spaces
   }
 }

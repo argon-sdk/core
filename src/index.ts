@@ -48,6 +48,13 @@ export type {
   ModalDefinition,
   ModalControl,
   SelectOption,
+  VoiceStreamToken,
+  CallAcceptance,
+  RingingCall,
+  RingingCallsResponse,
+  RejectCallResponse,
+  VoiceTrackSubscription,
+  DeletedResponse,
 } from './api/client'
 
 export {
@@ -60,6 +67,8 @@ export {
   typing,
   archetype,
   reaction,
+  voice,
+  call,
   ready,
   heartbeat,
   resumed,
@@ -140,6 +149,7 @@ export { ChannelDeleteContext } from './contexts/channel-delete'
 export { PresenceUpdateContext } from './contexts/presence-update'
 export { BotInstallingContext } from './contexts/bot-installing'
 export { BotUninstallingContext } from './contexts/bot-uninstalling'
+export { BotEntitlementsUpdatedContext } from './contexts/bot-entitlements-updated'
 export { TypingStartContext } from './contexts/typing-start'
 export { TypingStopContext } from './contexts/typing-stop'
 export { ArchetypeCreateContext } from './contexts/archetype-create'
@@ -149,6 +159,10 @@ export { ReactionRemoveContext } from './contexts/reaction-remove'
 export { ReadyContext } from './contexts/ready'
 export { HeartbeatContext } from './contexts/heartbeat'
 export { ResumedContext } from './contexts/resumed'
+export { VoiceJoinContext } from './contexts/voice-join'
+export { VoiceLeaveContext } from './contexts/voice-leave'
+export { CallIncomingContext } from './contexts/call-incoming'
+export { CallEndedContext } from './contexts/call-ended'
 
 export type { MessageCreateReplyOptions } from './contexts/message-create'
 
@@ -256,6 +270,14 @@ export type {
   PresenceActivity,
   PresenceStatus,
   ActivityKind,
+  ReadyPayload,
+  BotSpaceInfo,
+  BotEntitlementsUpdatedPayload,
+  EntitlementName,
+  VoiceJoinPayload,
+  VoiceLeavePayload,
+  CallIncomingPayload,
+  CallEndedPayload,
 } from './events/types'
 
 export type { Services } from './core/plugin'

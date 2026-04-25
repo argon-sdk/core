@@ -18,6 +18,7 @@ import { ChannelDeleteContext } from './channel-delete'
 import { PresenceUpdateContext } from './presence-update'
 import { BotInstallingContext } from './bot-installing'
 import { BotUninstallingContext } from './bot-uninstalling'
+import { BotEntitlementsUpdatedContext } from './bot-entitlements-updated'
 import { TypingStartContext } from './typing-start'
 import { TypingStopContext } from './typing-stop'
 import { ArchetypeCreateContext } from './archetype-create'
@@ -27,6 +28,10 @@ import { ReactionRemoveContext } from './reaction-remove'
 import { ReadyContext } from './ready'
 import { HeartbeatContext } from './heartbeat'
 import { ResumedContext } from './resumed'
+import { VoiceJoinContext } from './voice-join'
+import { VoiceLeaveContext } from './voice-leave'
+import { CallIncomingContext } from './call-incoming'
+import { CallEndedContext } from './call-ended'
 
 import type {
   MessageCreatePayload,
@@ -45,6 +50,12 @@ import type {
   ArchetypeEventPayload,
   ReactionPayload,
   PresenceUpdatePayload,
+  ReadyPayload,
+  BotEntitlementsUpdatedPayload,
+  VoiceJoinPayload,
+  VoiceLeavePayload,
+  CallIncomingPayload,
+  CallEndedPayload,
 } from '../events'
 
 type ContextFactory = (
@@ -59,8 +70,7 @@ type ContextFactory = (
 const registry = new Map<string, ContextFactory>([
   [
     EventType.Ready,
-    (api, id, data, rch, rsh, services) =>
-      new ReadyContext(api, id, data as { intents: number; spaceIds: string[] }, rch, rsh, services),
+    (api, id, data, rch, rsh, services) => new ReadyContext(api, id, data as ReadyPayload, rch, rsh, services),
   ],
 
   [EventType.Heartbeat, (api, id, _data, rch, rsh, services) => new HeartbeatContext(api, id, rch, rsh, services)],
@@ -183,6 +193,34 @@ const registry = new Map<string, ContextFactory>([
     (api, id, data, rch, rsh, services) =>
       new ReactionRemoveContext(api, id, data as ReactionPayload, rch, rsh, services),
   ],
+
+  [
+    EventType.BotEntitlementsUpdated,
+    (api, id, data, rch, rsh, services) =>
+      new BotEntitlementsUpdatedContext(api, id, data as BotEntitlementsUpdatedPayload, rch, rsh, services),
+  ],
+
+  [
+    EventType.VoiceJoin,
+    (api, id, data, rch, rsh, services) => new VoiceJoinContext(api, id, data as VoiceJoinPayload, rch, rsh, services),
+  ],
+
+  [
+    EventType.VoiceLeave,
+    (api, id, data, rch, rsh, services) =>
+      new VoiceLeaveContext(api, id, data as VoiceLeavePayload, rch, rsh, services),
+  ],
+
+  [
+    EventType.CallIncoming,
+    (api, id, data, rch, rsh, services) =>
+      new CallIncomingContext(api, id, data as CallIncomingPayload, rch, rsh, services),
+  ],
+
+  [
+    EventType.CallEnded,
+    (api, id, data, rch, rsh, services) => new CallEndedContext(api, id, data as CallEndedPayload, rch, rsh, services),
+  ],
 ])
 
 /** Maps event type names to their corresponding context classes */
@@ -210,6 +248,11 @@ export interface ContextMap {
   archetypeUpdate: ArchetypeUpdateContext
   reactionAdd: ReactionAddContext
   reactionRemove: ReactionRemoveContext
+  botEntitlementsUpdated: BotEntitlementsUpdatedContext
+  voiceJoin: VoiceJoinContext
+  voiceLeave: VoiceLeaveContext
+  callIncoming: CallIncomingContext
+  callEnded: CallEndedContext
 }
 
 /** Creates a typed context instance from a raw SSE event */

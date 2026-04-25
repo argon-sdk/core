@@ -25,7 +25,7 @@ export class BaseApiClient {
       query?: Record<string, string | undefined>
     } = {},
   ): Promise<T> {
-    const url = new URL(`${this.baseUrl}/api/bot/${iface}/v${version}/${method}`)
+    const url = new URL(`${this.baseUrl}/${iface}/v${version}/${method}`)
 
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {

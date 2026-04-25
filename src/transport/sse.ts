@@ -37,7 +37,7 @@ export class SseTransport implements Transport {
 
     while (!signal.aborted) {
       try {
-        const url = new URL(`${this.baseUrl}/api/bot/IEvents/v1/Stream`)
+        const url = new URL(`${this.baseUrl}/IEvents/v1/Stream`)
         url.searchParams.set('intents', String(this.intents))
 
         if (lastEventId !== null) {

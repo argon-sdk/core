@@ -11,6 +11,8 @@ export {
   typing,
   archetype,
   reaction,
+  voice,
+  call,
   ready,
   heartbeat,
   resumed,
@@ -43,6 +45,14 @@ export type {
   PresenceActivity,
   PresenceStatus,
   ActivityKind,
+  ReadyPayload,
+  BotSpaceInfo,
+  BotEntitlementsUpdatedPayload,
+  EntitlementName,
+  VoiceJoinPayload,
+  VoiceLeavePayload,
+  CallIncomingPayload,
+  CallEndedPayload,
 } from './types'
 
 export { text } from '../filters/predicates'
