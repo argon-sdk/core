@@ -23,13 +23,27 @@ export enum EntityType {
   SystemCallTimeout = 18,
   SystemUserJoined = 19,
   Attachment = 20,
+  Gif = 21,
+  LinkPreview = 22,
+  /** Only in `messages.history()`; cannot be sent */
+  Sticker = 23,
+  /** Only in `messages.history()`; cannot be sent */
+  CustomEmoji = 24,
+  /** Only in `messages.history()` (events report videos as attachments); cannot be sent */
+  Video = 25,
 }
 
+/**
+ * Fields shared by every entity. `offset`/`length` count UTF-16 code units, like JS string indices.
+ * Entities in events carry every entity field (unused ones `null`); entities from `messages.history()`
+ * carry only their own fields plus `version`.
+ */
 interface BaseEntity {
   type: EntityType
   offset: number
   length: number
-  version: number
+  /** Present in history and in entities the SDK builds; absent in events */
+  version?: number
 }
 
 /** Entity representing a hashtag reference */
@@ -151,16 +165,85 @@ export interface SystemUserJoinedEntity extends BaseEntity {
   inviterId: Snowflake | null
 }
 
-/** Entity representing a file attachment */
+/**
+ * A file attachment. In events the download link is `url`; in `messages.history()` it is `downloadUrl` and the
+ * entity also has `fileId`. The message's `attachments` list is the simpler way to read files.
+ */
 export interface AttachmentEntity extends BaseEntity {
   type: EntityType.Attachment
-  fileId: Snowflake
   fileName: string
   fileSize: number
   contentType: string
   width: number | null
   height: number | null
   thumbHash: string | null
+  fileId?: Snowflake
+  url?: string | null
+  downloadUrl?: string | null
+}
+
+/** A GIF. Events carry only its size; `messages.history()` also has the ids and preview */
+export interface GifEntity extends BaseEntity {
+  type: EntityType.Gif
+  width: number
+  height: number
+  gifId?: string
+  hmac?: string
+  fileId?: Snowflake | null
+  previewUrl?: string | null
+}
+
+/** A resolved link preview */
+export interface LinkPreviewEntity extends BaseEntity {
+  type: EntityType.LinkPreview
+  url: string
+  title: string | null
+  description: string | null
+  siteName: string | null
+  imageUrl: string | null
+  canonicalUrl: string | null
+}
+
+/** A sticker (history only) */
+export interface StickerEntity extends BaseEntity {
+  type: EntityType.Sticker
+  itemId: Snowflake
+  packId: Snowflake
+  spaceId: Snowflake
+  fileId: Snowflake
+  width: number
+  height: number
+  downloadUrl: string | null
+  thumbUrl: string | null
+  [field: string]: unknown
+}
+
+/** A custom emoji (history only) */
+export interface CustomEmojiEntity extends BaseEntity {
+  type: EntityType.CustomEmoji
+  itemId: Snowflake
+  spaceId: Snowflake
+  fileId: Snowflake
+  name: string
+  textColor: boolean
+  downloadUrl: string | null
+  [field: string]: unknown
+}
+
+/** A video (history only; events report it as an attachment) */
+export interface VideoEntity extends BaseEntity {
+  type: EntityType.Video
+  fileId: Snowflake
+  fileName: string
+  fileSize: number
+  contentType: string
+  width: number
+  height: number
+  durationMs: number
+  hasAudio: boolean
+  downloadUrl: string | null
+  posterUrl: string | null
+  [field: string]: unknown
 }
 
 /** Union of all possible message entity types */
@@ -186,3 +269,8 @@ export type MessageEntity =
   | SystemCallTimeoutEntity
   | SystemUserJoinedEntity
   | AttachmentEntity
+  | GifEntity
+  | LinkPreviewEntity
+  | StickerEntity
+  | CustomEmojiEntity
+  | VideoEntity

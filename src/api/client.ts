@@ -1,6 +1,9 @@
+import type { ApiClientOptions } from './base'
+
 import { InteractionsApi } from './sub/interactions'
 import { ArchetypesApi } from './sub/archetypes'
 import { VoiceEgressApi } from './sub/voice-egress'
+import { ExpressionsApi } from './sub/expressions'
 import { CommandsApi } from './sub/commands'
 import { ReactionsApi } from './sub/reactions'
 import { MessagesApi } from './sub/messages'
@@ -9,12 +12,19 @@ import { BotSelfApi } from './sub/bot-self'
 import { MembersApi } from './sub/members'
 import { SpacesApi } from './sub/spaces'
 import { TypingApi } from './sub/typing'
+import { FilesApi } from './sub/files'
 import { VoiceApi } from './sub/voice'
 import { CallsApi } from './sub/calls'
 import { BaseApiClient } from './base'
 
 export type { RegisterCommandParams, UpdateCommandParams, CommandOption, BotCommand } from './sub/commands'
-export type { SendMessageParams, SendMessageResponse, MessageHistoryParams } from './sub/messages'
+export type {
+  SendMessageParams,
+  SendMessageResponse,
+  EditMessageParams,
+  MessageHistoryParams,
+} from './sub/messages'
+export type { InteractionReplyParams } from './sub/interactions'
 export type { CallAcceptance, RingingCall, RingingCallsResponse, RejectCallResponse } from './sub/calls'
 export type { VoiceTrackSubscription, DeletedResponse } from './sub/voice-egress'
 export type { ModalDefinition, ModalControl } from '../controls/modal'
@@ -24,7 +34,9 @@ export type { BatchGetReactionsResponse, MessageReactions } from './sub/reaction
 export type { BotSpaceDetail, BotMember } from './sub/spaces'
 export type { BotSelf, BotSpaceBase } from './sub/bot-self'
 export type { VoiceStreamToken } from './sub/voice'
-const DEFAULT_BASE_URL = 'https://gateway.argon.zone'
+export type { UploadPurpose } from './sub/files'
+export type { AddExpressionItemParams, UpdateExpressionItemParams } from './sub/expressions'
+export type { ApiClientOptions } from './base'
 
 /** High-level API client providing access to all platform endpoints */
 export class ApiClient extends BaseApiClient {
@@ -38,12 +50,14 @@ export class ApiClient extends BaseApiClient {
   readonly commands: CommandsApi
   readonly typing: TypingApi
   readonly interactions: InteractionsApi
+  readonly files: FilesApi
+  readonly expressions: ExpressionsApi
   readonly voice: VoiceApi
   readonly calls: CallsApi
   readonly voiceEgress: VoiceEgressApi
 
-  constructor(token: string, baseUrl: string = DEFAULT_BASE_URL, debug: boolean = false) {
-    super(token, baseUrl, debug)
+  constructor(token: string, options: ApiClientOptions = {}) {
+    super(token, options)
 
     this.self = new BotSelfApi(this)
     this.messages = new MessagesApi(this)
@@ -55,6 +69,8 @@ export class ApiClient extends BaseApiClient {
     this.commands = new CommandsApi(this)
     this.typing = new TypingApi(this)
     this.interactions = new InteractionsApi(this)
+    this.files = new FilesApi(this)
+    this.expressions = new ExpressionsApi(this)
     this.voice = new VoiceApi(this)
     this.calls = new CallsApi(this)
     this.voiceEgress = new VoiceEgressApi(this)

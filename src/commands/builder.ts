@@ -1,6 +1,7 @@
 import type { CommandContext } from '../contexts/command-interaction'
 import type { CommandToken, NameToken, OptionToken } from './tokens'
 import { CommandBuilder } from './command-builder'
+import { ArgonError } from '../errors'
 import type { OptionMeta } from './option'
 
 /** Resolved command option with localization data */
@@ -19,7 +20,7 @@ export interface BuiltCommand<TDec = {}> {
   description: string
   descriptionLocalizations: Record<string, string>
   options: BuiltCommandOption[]
-  handler: (ctx: CommandContext & TDec, opts: Record<string, unknown>) => Promise<void>
+  handler: (ctx: CommandContext & TDec, opts: Record<string, unknown>) => unknown
 }
 
 /** Extracts the option key/value record from a tuple of command tokens */
@@ -36,7 +37,7 @@ type Prettify<T> = { [K in keyof T]: T[K] } & {}
 
 /** Intermediate command definition awaiting a run handler */
 export interface CommandDefinition<Opts, TDec = {}> {
-  run(handler: (ctx: CommandContext & TDec, opts: Prettify<Opts>) => Promise<void>): BuiltCommand<TDec>
+  run(handler: (ctx: CommandContext & TDec, opts: Prettify<Opts>) => unknown): BuiltCommand<TDec>
 }
 
 /** Creates a command from tokens or returns a CommandBuilder when called without arguments */
@@ -84,18 +85,18 @@ export function command(...tokens: any[]) {
   }
 
   if (!commandName) {
-    throw new Error('command() requires at least one name() token without locale')
+    throw new ArgonError('command() requires at least one name() token without locale')
   }
 
   return {
-    run(handler: (ctx: CommandContext, opts: Prettify<ExtractOpts<any[]>>) => Promise<void>) {
+    run(handler: (ctx: CommandContext, opts: Prettify<ExtractOpts<any[]>>) => unknown) {
       return {
         name: commandName,
         nameLocalizations,
         description,
         descriptionLocalizations,
         options,
-        handler: handler as (ctx: CommandContext, opts: Record<string, unknown>) => Promise<void>,
+        handler: handler as (ctx: CommandContext, opts: Record<string, unknown>) => unknown,
       }
     },
   }

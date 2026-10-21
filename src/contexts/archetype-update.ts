@@ -1,31 +1,22 @@
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
+import type { ContextDeps } from './base'
 import type { ArchetypeEventPayload } from '../events'
-import type { ApiClient } from '../api/client'
 import type { Snowflake } from '../types'
-import type { Archetype } from '../types'
+
 import { BaseContext } from './base'
 import { EventType } from '../events'
 
-/** Context for the archetype (role) update event */
-export class ArchetypeUpdateContext extends BaseContext {
-  private readonly payload: ArchetypeEventPayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: ArchetypeEventPayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.ArchetypeUpdate, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+/** Context for an archetype (role) being updated */
+export class ArchetypeUpdateContext extends BaseContext<ArchetypeEventPayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: ArchetypeEventPayload) {
+    super(deps, eventId, EventType.ArchetypeUpdate, payload)
   }
 
   get spaceId(): Snowflake {
     return this.payload.spaceId
   }
-  get archetype(): Archetype {
+
+  /** Note: `permissions` is always `null` in events */
+  get archetype(): ArchetypeEventPayload['archetype'] {
     return this.payload.archetype
   }
 }

@@ -1,25 +1,14 @@
-import type { ApiClient } from '../api/client'
-import type { BotPresence, PresenceStatus, PresenceUpdatePayload } from '../events'
-import type { Snowflake, User } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
+import type { ContextDeps } from './base'
+import type { PresenceUpdatePayload } from '../events'
+import type { BotPresence, PresenceActivity, PresenceStatus, Snowflake, User } from '../types'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
 
-/** Context for user presence status change events */
-export class PresenceUpdateContext extends BaseContext {
-  private readonly payload: PresenceUpdatePayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: PresenceUpdatePayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.PresenceUpdate, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+/** Context for a user's presence change (privileged Presence intent) */
+export class PresenceUpdateContext extends BaseContext<PresenceUpdatePayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: PresenceUpdatePayload) {
+    super(deps, eventId, EventType.PresenceUpdate, payload)
   }
 
   get spaceId(): Snowflake {
@@ -34,11 +23,28 @@ export class PresenceUpdateContext extends BaseContext {
     return this.payload.user.userId
   }
 
+  get displayName(): string {
+    return this.payload.user.displayName
+  }
+
+  get username(): string {
+    return this.payload.user.username
+  }
+
+  /** The user's app language, `null` when unknown */
+  get locale(): string | null {
+    return this.payload.user.locale ?? null
+  }
+
   get presence(): BotPresence {
     return this.payload.presence
   }
 
   get status(): PresenceStatus {
     return this.payload.presence.status
+  }
+
+  get activity(): PresenceActivity | null {
+    return this.payload.presence.activity
   }
 }

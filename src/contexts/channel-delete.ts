@@ -1,30 +1,20 @@
-import type { ApiClient } from '../api/client'
+import type { ContextDeps } from './base'
 import type { ChannelDeletePayload } from '../events'
 import type { Snowflake } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
 
 /** Context for the channel deletion event */
-export class ChannelDeleteContext extends BaseContext {
-  private readonly payload: ChannelDeletePayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: ChannelDeletePayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.ChannelDelete, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+export class ChannelDeleteContext extends BaseContext<ChannelDeletePayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: ChannelDeletePayload) {
+    super(deps, eventId, EventType.ChannelDelete, payload)
   }
 
   get spaceId(): Snowflake {
     return this.payload.spaceId
   }
+
   get channelId(): Snowflake {
     return this.payload.channelId
   }

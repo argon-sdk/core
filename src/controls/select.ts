@@ -2,64 +2,71 @@ import type { NameToken } from '../commands'
 
 import type { SelectOption, SelectHandler, ControlBuilder } from './base'
 
-/** Serializable string select menu definition */
-export interface StringSelect {
-  type: 'stringSelect'
+import { ControlType } from './base'
+import { autoControlId } from './registry'
+
+interface SelectBase {
+  /** Reported back in `selectInteraction` (1–100 characters) */
   customId: string
+  /** Up to 150 characters */
+  placeholder?: string
+  /** 0–25 */
+  minValues?: number
+  /** 1–25 */
+  maxValues?: number
+  disabled?: boolean
+  /** Only members with this archetype can use the select */
+  requiredArchetypeId?: string
+}
+
+/** Serializable string select menu, in its wire shape */
+export interface StringSelect extends SelectBase {
+  type: typeof ControlType.StringSelect
+  /** 1–25 options with unique values */
   options: SelectOption[]
-  placeholder?: string
-  placeholderLocalizations?: Record<string, string>
-  minValues?: number
-  maxValues?: number
-  disabled?: boolean
-  requiredArchetypeId?: string
 }
 
-/** Serializable user select menu definition */
-export interface UserSelect {
-  type: 'userSelect'
-  customId: string
-  placeholder?: string
-  placeholderLocalizations?: Record<string, string>
-  minValues?: number
-  maxValues?: number
-  disabled?: boolean
-  requiredArchetypeId?: string
+/** Serializable user select menu, in its wire shape */
+export interface UserSelect extends SelectBase {
+  type: typeof ControlType.UserSelect
 }
 
-/** Serializable archetype select menu definition */
-export interface ArchetypeSelect {
-  type: 'archetypeSelect'
-  customId: string
-  placeholder?: string
-  placeholderLocalizations?: Record<string, string>
-  minValues?: number
-  maxValues?: number
-  disabled?: boolean
-  requiredArchetypeId?: string
+/** Serializable archetype select menu, in its wire shape */
+export interface ArchetypeSelect extends SelectBase {
+  type: typeof ControlType.ArchetypeSelect
 }
 
-/** Serializable channel select menu definition */
-export interface ChannelSelect {
-  type: 'channelSelect'
-  customId: string
-  placeholder?: string
-  placeholderLocalizations?: Record<string, string>
-  minValues?: number
-  maxValues?: number
-  disabled?: boolean
-  requiredArchetypeId?: string
+/** Serializable channel select menu, in its wire shape */
+export interface ChannelSelect extends SelectBase {
+  type: typeof ControlType.ChannelSelect
 }
+
+type AnySelect = StringSelect | UserSelect | ArchetypeSelect | ChannelSelect
+
+const SELECT_TYPES = {
+  stringSelect: ControlType.StringSelect,
+  userSelect: ControlType.UserSelect,
+  archetypeSelect: ControlType.ArchetypeSelect,
+  channelSelect: ControlType.ChannelSelect,
+} as const
+
+type SelectTypeName<T extends AnySelect> = {
+  [K in keyof typeof SELECT_TYPES]: (typeof SELECT_TYPES)[K] extends T['type'] ? K : never
+}[keyof typeof SELECT_TYPES]
 
 /** Fluent builder for constructing select menu controls */
-export class SelectBuilder<T extends StringSelect | UserSelect | ArchetypeSelect | ChannelSelect, TDec = {}>
-  implements ControlBuilder<T>
-{
+export class SelectBuilder<T extends AnySelect, TDec = {}> implements ControlBuilder<T> {
   protected readonly data: T
   private handler?: SelectHandler<TDec>
 
-  constructor(type: T['type']) {
-    this.data = { type, customId: '' } as T
+  /** `type` is a {@link ControlType} value or its name, e.g. `'stringSelect'` */
+  constructor(type: T['type'] | SelectTypeName<T>) {
+    const value = typeof type === 'string' ? SELECT_TYPES[type] : type
+    this.data = { type: value, customId: '' } as T
+
+    if (value === ControlType.StringSelect) {
+      ;(this.data as StringSelect).options = []
+    }
   }
 
   id(value: string): this {
@@ -69,11 +76,6 @@ export class SelectBuilder<T extends StringSelect | UserSelect | ArchetypeSelect
 
   placeholder(value: string): this {
     ;(this.data as { placeholder?: string }).placeholder = value
-    return this
-  }
-
-  placeholderLocalizations(value: Record<string, string>): this {
-    ;(this.data as { placeholderLocalizations?: Record<string, string> }).placeholderLocalizations = value
     return this
   }
 
@@ -102,8 +104,17 @@ export class SelectBuilder<T extends StringSelect | UserSelect | ArchetypeSelect
     return this
   }
 
+  /**
+   * Attaches an inline submit handler. Without an explicit `.id()` a unique id is generated.
+   * Inline handlers live in memory; use `bot.on(select.interaction.prefix(...))` for ones that must survive restarts.
+   */
   on(handler: SelectHandler<TDec>): this {
     this.handler = handler
+
+    if (!this.data.customId) {
+      ;(this.data as { customId: string }).customId = autoControlId()
+    }
+
     return this
   }
 
@@ -120,40 +131,26 @@ export class SelectBuilder<T extends StringSelect | UserSelect | ArchetypeSelect
   }
 }
 
-class StringSelectBuilder<TDec = {}> extends SelectBuilder<StringSelect, TDec> {
-  constructor() {
-    super('stringSelect')
-    ;(this.data as StringSelect).options = []
-  }
-}
-
-function applyPlaceholderTokens<T extends StringSelect | UserSelect | ArchetypeSelect | ChannelSelect, TDec>(
-  builder: SelectBuilder<T, TDec>,
-  tokens: NameToken[],
-): void {
-  const localizations: Record<string, string> = {}
-
+/** Sets the placeholder from the unlocalized token; the API has no placeholder localizations */
+function applyPlaceholderTokens<T extends AnySelect, TDec>(builder: SelectBuilder<T, TDec>, tokens: NameToken[]): void {
   for (const token of tokens) {
     if (!token.locale) {
       builder.placeholder(token.value)
-    } else {
-      localizations[token.locale] = token.value
     }
-  }
-
-  if (Object.keys(localizations).length > 0) {
-    builder.placeholderLocalizations(localizations)
   }
 }
 
 /** Creates a string select menu with predefined options */
-export function stringSelect<TDec = {}>(): StringSelectBuilder<TDec>
-export function stringSelect<TDec = {}>(first: NameToken | NameToken[], ...rest: NameToken[]): StringSelectBuilder<TDec>
+export function stringSelect<TDec = {}>(): SelectBuilder<StringSelect, TDec>
+export function stringSelect<TDec = {}>(
+  first: NameToken | NameToken[],
+  ...rest: NameToken[]
+): SelectBuilder<StringSelect, TDec>
 export function stringSelect<TDec = {}>(
   first?: NameToken | NameToken[],
   ...rest: NameToken[]
-): StringSelectBuilder<TDec> {
-  const builder = new StringSelectBuilder<TDec>()
+): SelectBuilder<StringSelect, TDec> {
+  const builder = new SelectBuilder<StringSelect, TDec>(ControlType.StringSelect)
 
   if (first) {
     const tokens = Array.isArray(first) ? first : [first, ...rest]
@@ -173,7 +170,7 @@ export function userSelect<TDec = {}>(
   first?: NameToken | NameToken[],
   ...rest: NameToken[]
 ): SelectBuilder<UserSelect, TDec> {
-  const builder = new SelectBuilder<UserSelect, TDec>('userSelect')
+  const builder = new SelectBuilder<UserSelect, TDec>(ControlType.UserSelect)
 
   if (first) {
     const tokens = Array.isArray(first) ? first : [first, ...rest]
@@ -193,7 +190,7 @@ export function archetypeSelect<TDec = {}>(
   first?: NameToken | NameToken[],
   ...rest: NameToken[]
 ): SelectBuilder<ArchetypeSelect, TDec> {
-  const builder = new SelectBuilder<ArchetypeSelect, TDec>('archetypeSelect')
+  const builder = new SelectBuilder<ArchetypeSelect, TDec>(ControlType.ArchetypeSelect)
 
   if (first) {
     const tokens = Array.isArray(first) ? first : [first, ...rest]
@@ -213,7 +210,7 @@ export function channelSelect<TDec = {}>(
   first?: NameToken | NameToken[],
   ...rest: NameToken[]
 ): SelectBuilder<ChannelSelect, TDec> {
-  const builder = new SelectBuilder<ChannelSelect, TDec>('channelSelect')
+  const builder = new SelectBuilder<ChannelSelect, TDec>(ControlType.ChannelSelect)
 
   if (first) {
     const tokens = Array.isArray(first) ? first : [first, ...rest]

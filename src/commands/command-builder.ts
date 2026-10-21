@@ -5,6 +5,8 @@ import type { OptionMeta } from './option'
 import type { Archetype } from '../types'
 import type { Channel } from '../types'
 
+import { ArgonError } from '../errors'
+
 type Prettify<T> = { [K in keyof T]: T[K] } & {}
 
 type ExtractOptionType<T> = T extends OptionBuilder<infer K, infer V> ? Record<K, V> : {}
@@ -146,7 +148,7 @@ export class CommandBuilder<Opts = {}, TDec = {}> {
     return this as any
   }
 
-  run(handler: (ctx: CommandContext & TDec, opts: Prettify<Opts>) => Promise<void>): BuiltCommand<TDec> {
+  run(handler: (ctx: CommandContext & TDec, opts: Prettify<Opts>) => unknown): BuiltCommand<TDec> {
     const options: BuiltCommandOption[] = []
 
     for (const builder of this._optionBuilders) {
@@ -154,7 +156,7 @@ export class CommandBuilder<Opts = {}, TDec = {}> {
     }
 
     if (!this._name) {
-      throw new Error('command() requires setName()')
+      throw new ArgonError('command() requires setName()')
     }
 
     return {
@@ -163,7 +165,7 @@ export class CommandBuilder<Opts = {}, TDec = {}> {
       description: this._description,
       descriptionLocalizations: { ...this._descriptionLocalizations },
       options,
-      handler: handler as (ctx: CommandContext & TDec, opts: Record<string, unknown>) => Promise<void>,
+      handler: handler as (ctx: CommandContext & TDec, opts: Record<string, unknown>) => unknown,
     }
   }
 }

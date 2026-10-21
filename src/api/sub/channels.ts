@@ -1,13 +1,21 @@
 import type { BaseApiClient } from '../base'
-import type { Snowflake } from '../../types'
-import type { Channel } from '../../types'
+import type { Snowflake, Channel } from '../../types'
 
-/** Parameters for creating a new channel in a space */
+import { ChannelType } from '../../types/entities/channel'
+
+const CHANNEL_TYPE_NAMES = {
+  text: ChannelType.Text,
+  voice: ChannelType.Voice,
+  announcement: ChannelType.Announcement,
+} as const
+
+/** Parameters for creating a new channel in a space (needs ManageChannels) */
 export interface CreateChannelParams {
   spaceId: Snowflake
   name: string
-  channelType: 'text' | 'voice' | 'announcement'
-  description?: string
+  /** A {@link ChannelType} value or its lower-case name */
+  channelType: ChannelType | keyof typeof CHANNEL_TYPE_NAMES
+  description?: string | null
   groupId?: Snowflake | null
 }
 
@@ -21,8 +29,11 @@ export class ChannelsApi {
   constructor(private readonly base: BaseApiClient) {}
 
   create(params: CreateChannelParams): Promise<Channel> {
+    const channelType =
+      typeof params.channelType === 'string' ? CHANNEL_TYPE_NAMES[params.channelType] : params.channelType
+
     return this.base.call<Channel>('IChannels', 1, 'Create', 'POST', {
-      body: params,
+      body: { ...params, description: params.description ?? null, channelType },
     })
   }
 

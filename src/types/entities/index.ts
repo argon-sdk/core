@@ -1,18 +1,15 @@
 export type { Archetype, ArchetypeMember } from './archetype'
-export { UserFlags } from './user'
+export { UserFlags, hasUserFlag } from './user'
 export type { User } from './user'
 export type { Space } from './space'
 export { ChannelType } from './channel'
-export type { Channel } from './channel'
+export type { Channel, ChannelInfo } from './channel'
 export { EntityType } from './entity'
-export type {
-  MessageEntity,
-  AttachmentEntity,
-  MentionEntity,
-  UrlEntity,
-  SystemCallStartedEntity,
-  SystemCallEndedEntity,
-  SystemCallTimeoutEntity,
-  SystemUserJoinedEntity,
-} from './entity'
-export type { Message } from './message'
+export type * from './entity'
+export type { Message, HistoryMessage, Attachment, Crosspost, MessageWebhook } from './message'
+export type { Reaction } from './reaction'
+export { VoiceMemberState } from './voice-state'
+export type { VoiceState } from './voice-state'
+export { PresenceStatus, ActivityKind } from './presence'
+export type { BotPresence, PresenceActivity } from './presence'
+export type * from './expressions'

@@ -1,25 +1,14 @@
-import type { ApiClient } from '../api/client'
+import type { ContextDeps } from './base'
 import type { MemberJoinPayload } from '../events'
 import type { Snowflake, User } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
 
-/** Context for the member join event */
-export class MemberJoinContext extends BaseContext {
-  private readonly payload: MemberJoinPayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: MemberJoinPayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.MemberJoin, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+/** Context for the member join event (privileged Members intent) */
+export class MemberJoinContext extends BaseContext<MemberJoinPayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: MemberJoinPayload) {
+    super(deps, eventId, EventType.MemberJoin, payload)
   }
 
   get spaceId(): Snowflake {
@@ -40,5 +29,10 @@ export class MemberJoinContext extends BaseContext {
 
   get username(): string {
     return this.payload.user.username
+  }
+
+  /** The user's app language, `null` when unknown */
+  get locale(): string | null {
+    return this.payload.user.locale ?? null
   }
 }

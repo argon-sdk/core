@@ -1,5 +1,7 @@
 import type { SelectOption } from './base'
 
+import { ArgonError } from '../errors'
+
 /** Serializable modal form control entry */
 export interface ModalControl {
   type: 'textInput' | 'stringSelect' | 'userSelect' | 'archetypeSelect' | 'channelSelect' | 'checkbox'
@@ -20,9 +22,49 @@ export interface ModalControl {
 
 /** Complete modal form definition ready for dispatch */
 export interface ModalDefinition {
+  /** 1–100 characters; matched by `modal.submit.id(...)` */
+  customId: string
+  /** 1–45 characters */
+  title: string
+  /** 1–5 controls with unique ids */
+  controls: ModalControl[]
+}
+
+/** Modal component type values as sent on the wire */
+export const ModalComponentType = {
+  textInput: 0,
+  stringSelect: 1,
+  userSelect: 2,
+  archetypeSelect: 3,
+  channelSelect: 4,
+  checkbox: 5,
+} as const
+
+/** A modal in its wire shape (`IInteractions/Modal`) */
+export interface ModalWire {
   customId: string
   title: string
-  controls: ModalControl[]
+  components: Array<Omit<ModalControl, 'type' | 'style'> & { type: number; style: 0 | 1 | null }>
+}
+
+/** Converts a modal definition (or builder) to its wire shape */
+export function serializeModal(modal: ModalDefinition | ModalBuilder): ModalWire {
+  const def = modal instanceof ModalBuilder ? modal.build() : modal
+
+  if (def.controls.length === 0 || def.controls.length > 5) {
+    throw new ArgonError('A modal needs 1–5 controls')
+  }
+
+  return {
+    customId: def.customId,
+    title: def.title,
+    components: def.controls.map(({ type, style, ...rest }) => ({
+      ...rest,
+      type: ModalComponentType[type],
+      // The API requires a style on text inputs
+      style: type === 'textInput' ? (style === 'paragraph' ? 1 : 0) : null,
+    })),
+  }
 }
 
 /** Builder interface for individual modal controls */
@@ -463,11 +505,11 @@ export class ModalBuilder {
 
   build(): ModalDefinition {
     if (!this._customId) {
-      throw new Error('ModalBuilder requires setId()')
+      throw new ArgonError('ModalBuilder requires setId()')
     }
 
     if (!this._title) {
-      throw new Error('ModalBuilder requires setTitle()')
+      throw new ArgonError('ModalBuilder requires setTitle()')
     }
 
     const controls: ModalControl[] = []

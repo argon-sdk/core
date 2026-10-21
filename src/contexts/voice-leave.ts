@@ -1,25 +1,14 @@
-import type { ApiClient } from '../api/client'
+import type { ContextDeps } from './base'
 import type { VoiceLeavePayload } from '../events'
 import type { Snowflake, User } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
 
-/** Context for the voice leave event */
-export class VoiceLeaveContext extends BaseContext {
-  private readonly payload: VoiceLeavePayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: VoiceLeavePayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.VoiceLeave, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+/** Context for a user leaving a voice channel */
+export class VoiceLeaveContext extends BaseContext<VoiceLeavePayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: VoiceLeavePayload) {
+    super(deps, eventId, EventType.VoiceLeave, payload)
   }
 
   get spaceId(): Snowflake {
@@ -44,5 +33,10 @@ export class VoiceLeaveContext extends BaseContext {
 
   get username(): string {
     return this.payload.user.username
+  }
+
+  /** The user's app language, `null` when unknown */
+  get locale(): string | null {
+    return this.payload.user.locale ?? null
   }
 }

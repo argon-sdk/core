@@ -8,7 +8,8 @@ export interface Archetype {
   colour: number
   isMentionable: boolean
   isDefault: boolean
-  permissions: bigint | null // int64 in API, server sends as string, parsed to bigint
+  /** Entitlement bitmask; only filled by `archetypes.list/get` for bots holding ManageArchetype, `null` otherwise */
+  permissions: bigint | null
 }
 
 /** A member assigned to an archetype */

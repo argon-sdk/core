@@ -1,34 +1,21 @@
 import type { CommandContext } from '../contexts/command-interaction'
 import type { Filter } from './base'
 
-import { makeFilter } from './base'
+import { extendFilter, makeFilter } from './base'
+import { matches } from './predicates'
 import { EventType } from '../events/types'
 
-interface CommandInteractionFilter extends Filter<CommandContext> {
+/** Extended filter for slash command interactions with name matching */
+export interface CommandInteractionFilter extends Filter<CommandContext> {
+  and(predicate: (ctx: CommandContext) => boolean): CommandInteractionFilter
+  /** Matches the command name exactly or by pattern */
   name(match: string | RegExp): CommandInteractionFilter
 }
 
-function withMethods(filter: Filter<CommandContext>): CommandInteractionFilter {
-  return {
-    ...filter,
-    and(predicate) {
-      return withMethods(filter.and(predicate))
-    },
-    name(match: string | RegExp): CommandInteractionFilter {
-      return withMethods(
-        filter.and((ctx) => {
-          if (typeof match === 'string') {
-            return ctx.commandName === match
-          }
-
-          return match.test(ctx.commandName)
-        }),
-      )
-    },
-  }
-}
-
 /** Default command interaction filter that matches all slash commands */
-export const invoke: CommandInteractionFilter = withMethods(
+export const invoke: CommandInteractionFilter = extendFilter<CommandContext, CommandInteractionFilter>(
   makeFilter<CommandContext>(EventType.CommandInteraction, () => true),
+  (narrow) => ({
+    name: (match) => narrow((ctx) => matches(ctx.commandName, match)),
+  }),
 )

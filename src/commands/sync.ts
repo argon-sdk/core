@@ -2,6 +2,18 @@ import type { ApiClient, BotCommand } from '../api/client'
 import type { BuiltCommand } from './builder'
 import type { Snowflake } from '../types'
 
+import { CommandOptionType } from '../events/types'
+
+const OPTION_TYPES = {
+  string: CommandOptionType.String,
+  integer: CommandOptionType.Integer,
+  boolean: CommandOptionType.Boolean,
+  user: CommandOptionType.User,
+  channel: CommandOptionType.Channel,
+  role: CommandOptionType.Role,
+  number: CommandOptionType.Number,
+} as const
+
 function nonEmpty<T extends Record<string, unknown>>(obj: T): T | undefined {
   return Object.keys(obj).length > 0 ? obj : undefined
 }
@@ -18,7 +30,7 @@ function commandToRegisterParams(c: BuiltCommand, spaceId?: Snowflake | null) {
       description: o.meta.description,
       nameLocalizations: nonEmpty(o.nameLocalizations),
       descriptionLocalizations: nonEmpty(o.descriptionLocalizations),
-      type: o.meta.type,
+      type: OPTION_TYPES[o.meta.type],
       required: o.meta.required,
       choices: o.meta.choices
         ? Object.entries(o.meta.choices).map(([choiceKey, value]) => ({
@@ -31,23 +43,51 @@ function commandToRegisterParams(c: BuiltCommand, spaceId?: Snowflake | null) {
   }
 }
 
+/** Normalizes a JSON-like value so key order, `null`, `undefined` and empty containers don't count as changes */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonical)
+  }
+
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+
+    for (const key of Object.keys(value).sort()) {
+      const item = canonical((value as Record<string, unknown>)[key])
+
+      if (item === undefined || item === null) {
+        continue
+      }
+
+      if (Array.isArray(item) && item.length === 0) {
+        continue
+      }
+
+      if (typeof item === 'object' && !Array.isArray(item) && Object.keys(item).length === 0) {
+        continue
+      }
+
+      out[key] = item
+    }
+
+    return out
+  }
+
+  return value
+}
+
+function same(a: unknown, b: unknown): boolean {
+  // Wrapped, so a top-level null and an empty object compare equal as well
+  return JSON.stringify(canonical({ value: a })) === JSON.stringify(canonical({ value: b }))
+}
+
 function hasChanged(remote: BotCommand, local: BuiltCommand, spaceId?: Snowflake | null): boolean {
-  if (remote.description !== local.description) {
-    return true
-  }
-
-  if (JSON.stringify(remote.nameLocalizations ?? {}) !== JSON.stringify(local.nameLocalizations)) {
-    return true
-  }
-
-  if (JSON.stringify(remote.descriptionLocalizations ?? {}) !== JSON.stringify(local.descriptionLocalizations)) {
-    return true
-  }
-
-  const remoteOptions = JSON.stringify(remote.options)
-  const localOptions = JSON.stringify(commandToRegisterParams(local, spaceId).options)
-
-  return remoteOptions !== localOptions
+  return (
+    remote.description !== local.description ||
+    !same(remote.nameLocalizations, local.nameLocalizations) ||
+    !same(remote.descriptionLocalizations, local.descriptionLocalizations) ||
+    !same(remote.options, commandToRegisterParams(local, spaceId).options)
+  )
 }
 
 export async function syncCommands(

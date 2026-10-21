@@ -32,12 +32,13 @@ export class CallsApi {
     })
   }
 
-  reject(callId: Snowflake, reason: string): Promise<RejectCallResponse> {
+  reject(callId: Snowflake, reason?: string): Promise<RejectCallResponse> {
     return this.base.call<RejectCallResponse>('ICalls', 20260401, 'Reject', 'POST', {
-      body: { callId, reason },
+      body: { callId, reason: reason ?? null },
     })
   }
 
+  /** Calls currently ringing for the bot (the current server always returns an empty list) */
   ringing(): Promise<RingingCallsResponse> {
     return this.base.call<RingingCallsResponse>('ICalls', 20260401, 'Ringing', 'GET')
   }

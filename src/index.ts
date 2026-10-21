@@ -3,10 +3,10 @@
  *
  * @example
  * ```ts
- * import { Bot, on, message } from '@argon-sdk/core'
+ * import { Bot, message } from '@argon-sdk/core'
  *
  * const bot = new Bot('your-token')
- * bot.on(message.create, (ctx) => ctx.reply('Hello!'))
+ * bot.on(message.create.fromHumans(), (ctx) => ctx.reply('Hello!'))
  * await bot.start()
  * ```
  *
@@ -14,11 +14,12 @@
  */
 
 export { Bot } from './core/bot'
-export type { BotOptions } from './core/bot'
+export type { BotOptions, CommandsOptions } from './core/bot'
 export { on, otherwise } from './core/on'
 export type { Filter } from './filters/base'
-export { makeFilter } from './filters/base'
+export { makeFilter, extendFilter } from './filters/base'
 export { BaseContext } from './contexts/base'
+export type { ContextDeps } from './contexts/base'
 export { InteractionContext } from './contexts/interaction'
 export type { Middleware, NextFunction } from './core/middleware'
 export type { BotHooks } from './core/hooks'
@@ -29,10 +30,22 @@ export type { SseOptions } from './transport/sse'
 export type { Transport } from './transport/transport'
 
 export { ApiClient } from './api/client'
+export { BaseApiClient, DEFAULT_BASE_URL } from './api/base'
+export type { CallOptions, QueryValue, FetchLike } from './api/base'
+export { RateLimiter, DEFAULT_RATE_LIMITS } from './api/rate-limiter'
+export type { RateLimiterOptions } from './api/rate-limiter'
+export { parseJson } from './api/json'
+export { file } from './api/files'
+export type { InputFile, FileData } from './api/files'
+export { INTERACTION_TTL_MS } from './api/sub/interactions'
+export { MAX_ATTACHMENTS } from './api/sub/messages'
 export type {
+  ApiClientOptions,
   SendMessageParams,
   SendMessageResponse,
+  EditMessageParams,
   MessageHistoryParams,
+  InteractionReplyParams,
   CreateChannelParams,
   DeleteChannelParams,
   RegisterCommandParams,
@@ -55,6 +68,9 @@ export type {
   RejectCallResponse,
   VoiceTrackSubscription,
   DeletedResponse,
+  UploadPurpose,
+  AddExpressionItemParams,
+  UpdateExpressionItemParams,
 } from './api/client'
 
 export {
@@ -69,6 +85,7 @@ export {
   reaction,
   voice,
   call,
+  expressions,
   ready,
   heartbeat,
   resumed,
@@ -89,9 +106,19 @@ import type { ButtonNamespace } from './controls/button'
 import type { ControlInteractionFilter } from './filters/control-interaction'
 import type { SelectInteractionFilter } from './filters/select-interaction'
 import type { ModalSubmitFilter } from './filters/modal-submit'
+import type { MessageCreateFilter } from './filters/message-create'
+import type { CommandInteractionFilter } from './filters/command-interaction'
 import type { ModalBuilder, ModalDefinition, ModalControlDef } from './controls'
 
-/** Button control factories and interaction event filter */
+export type {
+  ControlInteractionFilter,
+  SelectInteractionFilter,
+  ModalSubmitFilter,
+  MessageCreateFilter,
+  CommandInteractionFilter,
+}
+
+/** Button control factories and the button click event filter */
 export const button: ButtonNamespace & {
   interaction: ControlInteractionFilter
 } = {
@@ -99,7 +126,7 @@ export const button: ButtonNamespace & {
   interaction: _control.interaction,
 }
 
-/** Select control factories and interaction event filter */
+/** Select control factories and the select submission event filter */
 export const select: {
   interaction: SelectInteractionFilter
   string: typeof stringSelect
@@ -114,7 +141,7 @@ export const select: {
   channel: channelSelect,
 }
 
-/** Modal dialog factory and submit event filter */
+/** Modal dialog factory and the modal submission event filter */
 export const modal: {
   (): ModalBuilder
   (customId: string, title: string, ...controls: ModalControlDef[]): ModalDefinition
@@ -128,14 +155,17 @@ export { name, describe, option } from './commands/tokens'
 export type { NameToken, DescribeToken, OptionToken, CommandToken } from './commands/tokens'
 export { string, integer, number, boolean, user, channel as channelOption, role } from './commands/option'
 export type { OptionDef, OptionMeta } from './commands/option'
-export type { BuiltCommand, BuiltCommandOption } from './commands/builder'
+export type { BuiltCommand, BuiltCommandOption, CommandDefinition, ExtractOpts } from './commands/builder'
+export { CommandBuilder } from './commands/command-builder'
+export { syncCommands } from './commands/sync'
 
-export { EventType } from './events/types'
+export { EventType, CommandOptionType } from './events/types'
 
 export type { ContextMap } from './contexts/registry'
-export type { ReplyOptions, EditOptions } from './contexts/types'
+export type { ReplyOptions, EditOptions, MessageContent } from './contexts/types'
 
 export { MessageCreateContext } from './contexts/message-create'
+export type { MessageCreateReplyOptions } from './contexts/message-create'
 export { ControlInteractionContext } from './contexts/control-interaction'
 export { CommandContext } from './contexts/command-interaction'
 export { SelectInteractionContext } from './contexts/select-interaction'
@@ -163,43 +193,48 @@ export { VoiceJoinContext } from './contexts/voice-join'
 export { VoiceLeaveContext } from './contexts/voice-leave'
 export { CallIncomingContext } from './contexts/call-incoming'
 export { CallEndedContext } from './contexts/call-ended'
+export { ExpressionsUpdateContext } from './contexts/expressions-update'
 
-export type { MessageCreateReplyOptions } from './contexts/message-create'
+export { text, inSpace, inChannel, fromUser } from './filters/predicates'
 
-export { text } from './filters/predicates'
+export { ArgonError, HttpError, ApiError, TransportError } from './errors'
+export type { ApiErrorCode } from './errors'
 
-export { CommandBuilder } from './commands/command-builder'
-
-export { ArgonError, HttpError, TransportError } from './errors'
-
-export { Intent } from './types/intents'
-export { Entitlement } from './types/entitlement'
 export {
   row,
+  serializeRows,
+  serializeModal,
   ButtonBuilder,
   SelectBuilder,
   ModalBuilder,
+  ModalComponentType,
+  ControlRegistry,
   textInput,
   checkboxInput,
   selectInput,
   userSelectInput,
   archetypeSelectInput,
   channelSelectInput,
+  ControlType,
+  ButtonVariant,
+  MAX_ROWS,
+  MAX_BUTTONS_PER_ROW,
 } from './controls/index'
-export { ControlType, ButtonVariant } from './controls/index'
-export { VisibilityScope } from './types/visibility'
-export { UserFlags } from './types/entities/user'
-export type { Visibility } from './types/visibility'
 export type {
   Button,
+  OklchColour,
   StringSelect,
   UserSelect,
   ArchetypeSelect,
   ChannelSelect,
   Control,
   Row,
+  ControlRowData,
   ControlBuilder,
+  ControlHandler,
+  SelectHandler,
   ModalControlDef,
+  ModalWire,
 } from './controls/index'
 
 export {
@@ -224,61 +259,27 @@ export {
 
 export type { BuiltMessage, MessageToken } from './core/message-builder'
 
-export type {
-  Snowflake,
-  Archetype,
-  ArchetypeMember,
-  Reaction,
-  User,
-  Space,
-  Channel,
-  Message,
-  MessageEntity,
-  AttachmentEntity,
-  MentionEntity,
-  UrlEntity,
-  SystemCallStartedEntity,
-  SystemCallEndedEntity,
-  SystemCallTimeoutEntity,
-  SystemUserJoinedEntity,
-} from './types/index'
-
-export { ChannelType, EntityType } from './types/index'
-
-export type {
-  SseEventType,
-  SseEventMap,
-  SseEvent,
-  MessageCreatePayload,
-  MessageEditPayload,
-  MemberJoinPayload,
-  MemberLeavePayload,
-  MemberUpdatePayload,
-  ChannelCreatePayload,
-  ChannelDeletePayload,
-  TypingPayload,
-  ControlInteractionPayload,
-  CommandInteractionPayload,
-  CommandOptionValue,
-  ArchetypeEventPayload,
-  BotSpacePayload,
-  SelectInteractionPayload,
-  ModalSubmitPayload,
-  ReactionPayload,
-  PresenceUpdatePayload,
-  BotPresence,
-  PresenceActivity,
+export {
+  Intent,
+  EVENT_INTENTS,
+  intentNames,
+  Entitlement,
+  hasEntitlement,
+  entitlementNames,
+  toEntitlementMask,
+  UserFlags,
+  hasUserFlag,
+  ChannelType,
+  EntityType,
+  VoiceMemberState,
   PresenceStatus,
   ActivityKind,
-  ReadyPayload,
-  BotSpaceInfo,
-  BotEntitlementsUpdatedPayload,
-  EntitlementName,
-  VoiceJoinPayload,
-  VoiceLeavePayload,
-  CallIncomingPayload,
-  CallEndedPayload,
-} from './events/types'
+  ARGON_EPOCH_MS,
+} from './types/index'
+
+export type * from './types/entities/index'
+export type { Snowflake, EntitlementName } from './types/index'
+export type * from './events/types'
 
 export type { Services } from './core/plugin'
 export type { Plugin } from './core/plugin'

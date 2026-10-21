@@ -1,6 +1,6 @@
 # @argon-sdk/core
 
-SDK for building [Argon Chat](https://argon.gl) bots.
+SDK for building [Argon Chat](https://argon.gl) bots. Covers Bot API 1.12.
 
 ## Install
 
@@ -11,11 +11,9 @@ bun add @argon-sdk/core
 ## Quick start
 
 ```ts
-import { Bot, Intent, command, name, describe, message } from '@argon-sdk/core'
+import { Bot, command, name, describe, message } from '@argon-sdk/core'
 
-const bot = new Bot(process.env.BOT_TOKEN, {
-  intents: Intent.Messages | Intent.Commands,
-})
+const bot = new Bot(process.env.BOT_TOKEN!)
 
 const hello = command(name('hello'), describe('Say hi')).run(async (ctx) => {
   await ctx.reply(`hi, ${ctx.user.displayName}`)
@@ -23,41 +21,34 @@ const hello = command(name('hello'), describe('Say hi')).run(async (ctx) => {
 
 bot.commands(hello)
 
-bot.on(message.create, async (ctx) => {
+bot.on(message.create.fromHumans(), async (ctx) => {
   await ctx.reply(`echo: ${ctx.text}`)
 })
 
-await bot.start()
+await bot.start() // resolves when the bot stops
 ```
+
+The bot subscribes to the intents its handlers need (here `Messages` and `Commands`), ignores its own
+messages, and acknowledges interactions you don't answer yourself.
 
 ## Two API styles
 
-Every builder in the SDK supports two usage styles. Use whichever fits better.
-
-### Token-based
-
-Compact, declarative, great for simple definitions:
+Every builder supports two styles: compact tokens, or chainable methods.
 
 ```ts
-import { command, name, describe, option, string } from '@argon-sdk/core'
+import { command, name, describe, option, string, CommandBuilder } from '@argon-sdk/core'
 
+// Token-based
 const greet = command(
   name('greet'),
   describe('Greet a user'),
-  option(string('Who to greet'), name('target'), describe('Username')),
+  option(string('Who to greet'), name('target')),
 ).run(async (ctx, opts) => {
   await ctx.reply(`Hello, ${opts.target}!`)
 })
-```
 
-### Fluent
-
-Chainable methods, good when you need full control:
-
-```ts
-import { CommandBuilder } from '@argon-sdk/core'
-
-const greet = new CommandBuilder()
+// Fluent
+const greet2 = new CommandBuilder()
   .setName('greet')
   .setDescription('Greet a user')
   .addOption((o) => o.string().setName('target').setDescription('Who to greet'))
@@ -68,116 +59,122 @@ const greet = new CommandBuilder()
 
 ## Commands
 
-Options are fully typed -- `opts.target` is `string`, `opts.count` is `number`, etc.
+Options are fully typed: `opts.target` is `string`, `opts.sides` is `number`. User, channel and role options
+arrive resolved (a member, channel or archetype), fetched in parallel.
 
 ```ts
-import { command, name, describe, option, string, integer } from '@argon-sdk/core'
+import { command, name, describe, option, integer, user } from '@argon-sdk/core'
 
 const roll = command(
   name('roll'),
   describe('Roll dice'),
   option(integer('Number of sides').choices({ d6: 6, d20: 20 }), name('sides')),
 ).run(async (ctx, opts) => {
-  const result = Math.floor(Math.random() * opts.sides) + 1
-  await ctx.reply(`Rolled: ${result}`)
+  await ctx.reply(`Rolled: ${Math.floor(Math.random() * opts.sides) + 1}`)
 })
 
-bot.commands(roll, greet)
+bot.commands(roll)
+bot.commands(adminOnly, { spaceId: '…' }) // space-scoped commands
 ```
+
+Commands are synced on `start()`: new ones are registered, changed ones updated, removed ones deleted.
 
 ## Events
 
-Two ways to subscribe -- filter objects or string event names:
+Subscribe with a filter, or with an event name:
 
 ```ts
-import { message, member, modal, reaction, button } from '@argon-sdk/core'
+import { message, member, reaction, button, expressions } from '@argon-sdk/core'
 
-// Filter objects -- composable, type-safe
 bot.on(message.create, async (ctx) => {
-  await ctx.reply(`echo: ${ctx.text}`)
+  await ctx.react('👀')
 })
 
-bot.on(member.join, async (ctx) => {
-  console.log('new member:', ctx.userId)
-})
+bot.on(message.create.startsWith('!ping').inChannel(channelId), (ctx) => ctx.reply('pong'))
+bot.on(message.create.mentions(), (ctx) => ctx.reply('you called?')) // mentions of the bot
 
-bot.on(modal.submit, async (ctx) => {
-  console.log('modal data:', ctx.values)
-})
+bot.on(member.join, (ctx) => console.log('joined:', ctx.displayName, ctx.locale))
+bot.on(reaction.add, (ctx) => console.log(ctx.isCustom ? ctx.emojiName : ctx.emoji))
+bot.on(expressions.update, (ctx) => console.log('stickers changed in', ctx.spaceId))
 
-bot.on(button.interaction, async (ctx) => {
-  console.log('button clicked:', ctx.id)
-})
+bot.on('messageEdit', (ctx) => console.log('edited:', ctx.text))
+```
 
-bot.on(reaction.add, async (ctx) => {
-  console.log('reaction:', ctx.emoji)
-})
+Filters chain: `message.create` has `.text()`, `.startsWith()`, `.from()`, `.inChannel()`, `.inSpace()`,
+`.mentions()` and `.fromHumans()`; every filter has `.and(predicate)`. The raw payload is always at `ctx.payload`.
 
-// String event names -- simpler, still typed
-bot.on('messageCreate', async (ctx) => {
-  await ctx.reply(`echo: ${ctx.text}`)
-})
+**Every matching subscription runs**, in registration order. Handlers passed to one `on()` form a chain,
+so a guard can stop the handlers after it:
 
-bot.on('memberJoin', async (ctx) => {
-  console.log('new member:', ctx.userId)
-})
+```ts
+const adminsOnly = async (ctx, next) => {
+  if (isAdmin(ctx.userId)) await next()
+}
 
-bot.on('modalSubmit', async (ctx) => {
-  console.log('modal data:', ctx.values)
-})
+bot.on(message.create.startsWith('!ban'), adminsOnly, banHandler) // banHandler runs only for admins
+bot.on(message.create, logMessage)                                  // runs for every message regardless
+```
+
+`bot.group(filter, use => …)` routes an event to the first branch whose predicate matches, and `otherwise()`
+runs only when no earlier subscription matched.
+
+### Intents
+
+Intents are derived from your subscriptions. Members, Presence and Calls events need privileged intents
+(Calls only for verified bots); events you only consume through `bot.use()` middleware need their intent
+listed explicitly:
+
+```ts
+const bot = new Bot(token, { intents: Intent.Typing })
 ```
 
 ### Bot lifecycle
 
 ```ts
-import { botLifecycle } from '@argon-sdk/core'
+import { botLifecycle, ready } from '@argon-sdk/core'
 
-bot.on(botLifecycle.installing, async (ctx) => {
-  console.log('installed into space', ctx.spaceId)
-})
-
-bot.on(botLifecycle.entitlementsUpdated, async (ctx) => {
-  console.log(
-    `space ${ctx.spaceId}: granted=${ctx.grantedEntitlements} required=${ctx.requiredEntitlements}`,
-  )
-})
+bot.on(ready, (ctx) => console.log(`online as ${bot.me.username} in ${ctx.spaces.length} spaces`))
+bot.on(botLifecycle.installing, (ctx) => console.log('installed into', ctx.spaceId))
+bot.on(botLifecycle.entitlementsUpdated, (ctx) => console.log('missing:', ctx.missing.join(', ')))
 ```
 
-`botLifecycle.entitlementsUpdated` fires whenever the space's granted entitlements drift from what the bot requires — handy for surfacing a re-authorize prompt. Always delivered, no intent needed.
-
 ### Voice & calls
-
-Voice channel join/leave events are unprivileged (`Intent.Voice`). Call lifecycle events (`Intent.Calls`) are **verified-bot only**.
 
 ```ts
 import { voice, call } from '@argon-sdk/core'
 
-bot.on(voice.join, async (ctx) => {
-  console.log(`${ctx.displayName} joined voice ${ctx.channelId}`)
-})
-
-bot.on(voice.leave, async (ctx) => {
-  console.log(`${ctx.displayName} left voice ${ctx.channelId}`)
-})
-
-bot.on(call.incoming, async (ctx) => {
-  await ctx.accept() // or ctx.reject('busy')
-})
-
-bot.on(call.ended, async (ctx) => {
-  console.log('call ended:', ctx.callId)
-})
+bot.on(voice.join, (ctx) => console.log(`${ctx.displayName} joined voice ${ctx.channelId}`))
+bot.on(call.incoming, (ctx) => ctx.accept()) // verified bots only; ctx.fromLocale picks a voice
 ```
 
-The audio data plane (LiveKit room, Opus codec) is not part of `@argon-sdk/core` — it's handled by the separate `@argon-sdk/voice` plugin (analogous to `@discordjs/voice`).
+Interactions carry the user's voice channel as `ctx.voiceState`. The audio data plane lives in the separate
+`@argon-sdk/voice` plugin.
 
-Low-level API endpoints are accessible via `bot.api.voice`, `bot.api.calls`, `bot.api.voiceEgress` if you need them directly.
+## Messages
+
+```ts
+import { richText, bold, mention, file } from '@argon-sdk/core'
+
+await ctx.reply('hi')                                    // replies to the message
+await ctx.send('hi')                                     // plain message in the same channel
+await ctx.reply(richText(bold('Welcome '), mention(ctx.userId!, '@you')))
+await ctx.reply('see attached', {
+  attachments: [file(await Bun.file('report.pdf').bytes(), 'report.pdf'), uploadedFileId],
+})
+await ctx.typing('thinking')
+
+await bot.api.messages.edit(channelId, messageId, { text: 'updated' })
+
+for await (const m of bot.api.messages.iterate(channelId, { max: 500 })) {
+  // newest first
+}
+```
+
+Message ids are 64-bit integers and are handled as strings everywhere.
 
 ## Controls
 
 ### Buttons
-
-Token-based -- label via `name()`:
 
 ```ts
 import { row, button, name } from '@argon-sdk/core'
@@ -185,8 +182,8 @@ import { row, button, name } from '@argon-sdk/core'
 await ctx.reply('Pick one', {
   controls: [
     row(
-      button.callback(name('Confirm')).id('confirm').on(async (ctx) => {
-        await ctx.reply('Confirmed!')
+      button.callback(name('Confirm')).on(async (ctx) => {
+        await ctx.update('Confirmed!', { controls: [] }) // edit the message holding the button
       }),
       button.link(name('Docs')).href('https://argon.gl/docs'),
     ),
@@ -194,49 +191,24 @@ await ctx.reply('Pick one', {
 })
 ```
 
-Fluent:
+Inline `.on()` handlers live in memory: they stop working when the bot restarts. For buttons that must keep
+working, give them an id of the form `prefix:data` and route the prefix:
 
 ```ts
-import { row, ButtonBuilder } from '@argon-sdk/core'
+button.callback(name('Vote')).id(`vote:${pollId}`)
 
-await ctx.reply('Pick one', {
-  controls: [
-    row(
-      new ButtonBuilder('callback').label('Confirm').id('confirm').on(async (ctx) => {
-        await ctx.reply('Confirmed!')
-      }),
-      new ButtonBuilder('link').label('Docs').href('https://argon.gl/docs'),
-    ),
-  ],
+bot.on(button.interaction.prefix('vote'), async (ctx) => {
+  await recordVote(ctx.data, ctx.userId) // ctx.data === pollId
 })
 ```
 
 ### Selects
 
-Token-based -- placeholder via `name()`:
-
 ```ts
 import { row, select, name } from '@argon-sdk/core'
 
-const roleSelect = select.string(name('Pick a role'))
-  .id('role')
-  .options([
-    { label: 'Admin', value: 'admin' },
-    { label: 'Member', value: 'member' },
-  ])
-  .on(async (ctx) => {
-    await ctx.reply(`Selected: ${ctx.values.join(', ')}`)
-  })
-```
-
-Fluent -- one `SelectBuilder` for all types:
-
-```ts
-import { SelectBuilder } from '@argon-sdk/core'
-
-const roleSelect = new SelectBuilder('stringSelect')
-  .id('role')
-  .placeholder('Pick a role')
+const roleSelect = select
+  .string(name('Pick a role'))
   .options([
     { label: 'Admin', value: 'admin' },
     { label: 'Member', value: 'member' },
@@ -245,83 +217,71 @@ const roleSelect = new SelectBuilder('stringSelect')
     await ctx.reply(`Selected: ${ctx.values.join(', ')}`)
   })
 
-const userPicker = new SelectBuilder('userSelect')
-  .id('target')
-  .placeholder('Pick a user')
-  .on(async (ctx) => {
-    await ctx.reply(`Picked: ${ctx.values[0]}`)
-  })
-```
-
-Other select types: `select.user()`, `select.archetype()`, `select.channel()`.
-
-```ts
 await ctx.reply('Choose:', { controls: [row(roleSelect)] })
 ```
 
-## Modals
+Other select types: `select.user()`, `select.archetype()`, `select.channel()`. A row holds up to 5 buttons
+or exactly one select; a message holds up to 5 rows.
 
-### Token-based
+## Modals
 
 ```ts
 import { modal, textInput, checkboxInput } from '@argon-sdk/core'
 
-const feedback = modal(
-  'feedback',
-  'Send feedback',
-  textInput('message', 'Your message').style('paragraph').required(),
-  checkboxInput('anonymous', 'Send anonymously'),
+bot.on(button.interaction.id('feedback'), (ctx) =>
+  ctx.showModal(
+    modal(
+      'feedback',
+      'Send feedback',
+      textInput('message', 'Your message').style('paragraph').required(),
+      checkboxInput('anonymous', 'Send anonymously'),
+    ),
+  ),
 )
 
-await ctx.showModal(feedback)
+bot.on(modal.submit.id('feedback'), async (ctx) => {
+  await ctx.reply(`Thanks! (${ctx.checked('anonymous') ? 'anonymous' : ctx.user.displayName})`)
+})
 ```
 
-### Fluent
+The user has 60 seconds to submit.
+
+## Interactions
+
+Clients wait for an acknowledgement of a command, click or select: `ctx.ack()`, `ctx.defer()` (loading
+state) or `ctx.showModal()`. You rarely need to call them: if a handler is still running after 2.5 s the bot
+defers for you, and once handlers finish it acknowledges whatever is left unanswered. `ctx.reply()` is
+independent of that and can be called any time. Tune it with `interactions: { autoDeferAfter }`.
+
+## Stickers, emoji and files
 
 ```ts
-import { ModalBuilder } from '@argon-sdk/core'
+const { packs, version } = await bot.api.expressions.list(spaceId)
+const pack = await bot.api.expressions.createPack({ spaceId, kind: 'sticker', title: 'Cats', slug: 'cats' })
+await bot.api.expressions.addItem({ spaceId, packId: pack.packId, name: 'wave', file: file(png, 'wave.png') })
 
-const feedback = new ModalBuilder()
-  .setId('feedback')
-  .setTitle('Send feedback')
-  .addControl((c) => c.textInput().setId('message').setLabel('Your message').setStyle('paragraph').setRequired())
-  .addControl((c) => c.checkbox().setId('anonymous').setLabel('Send anonymously'))
-  .build()
-
-await ctx.showModal(feedback)
+await ctx.react({ itemId: emoji.itemId }) // custom emoji reaction
+const uploaded = await bot.api.files.upload(file(bytes, 'log.txt'), 'attachment')
 ```
 
-## Rich text
+Writing expressions needs the CreateExpressions entitlement.
 
-### Token-based
+## Errors
+
+API failures throw `HttpError` (alias `ApiError`) with the status, the endpoint and the API's error code:
 
 ```ts
-import { richText, bold, plain, italic, url } from '@argon-sdk/core'
-
-const msg = richText(
-  bold('Welcome'),
-  plain(' to the server! Read the '),
-  url('https://argon.gl/rules', 'rules'),
-  plain('.'),
-)
-
-await ctx.reply(msg.text, { entities: msg.entities })
+try {
+  await ctx.react('🔥')
+} catch (e) {
+  if (e instanceof HttpError && e.code === 'already_reacted') return
+  throw e
+}
 ```
 
-### Fluent
-
-```ts
-import { richText } from '@argon-sdk/core'
-
-const msg = richText()
-  .bold('Welcome')
-  .plain(' to the server! Read the ')
-  .url('https://argon.gl/rules', 'rules')
-  .plain('.')
-  .build()
-
-await ctx.reply(msg.text, { entities: msg.entities })
-```
+Errors thrown by handlers go to `hooks.onError(error, ctx)`, or to `console.error` without that hook.
+Requests stay inside the server's rate limits on their own; 429s are retried after `Retry-After`, and
+idempotent requests are retried after network errors.
 
 ## Middleware
 
@@ -333,48 +293,42 @@ bot.use(async (ctx, next) => {
 })
 ```
 
+Events are handled concurrently (32 at a time by default, see `concurrency`).
+
 ## Writing a plugin
 
-Plugins inject a service that becomes available on every context. Use `definePlugin` to keep the literal name and value type — the `Bot<TDecorators>` generic accumulates them automatically. **No `declare module` augmentation needed in consumer code.**
+Plugins inject a value that becomes available on every context and on the bot, typed through the
+`Bot<TDecorators>` generic. No `declare module` augmentation is needed.
 
 ```ts
-// my-plugin/src/index.ts
 import { definePlugin } from '@argon-sdk/core'
 
-export const myPlugin = (config: Config) =>
-  definePlugin('myService', () => buildService(config))
-// → Plugin<'myService', MyService>
+export const myPlugin = (config: Config) => definePlugin('myService', () => buildService(config))
 ```
-
-Consumer:
 
 ```ts
 const bot = new Bot(token).plugin(myPlugin(cfg))
 
-bot.on(message.create, async (ctx) => {
-  ctx.myService.doThing() // typed automatically — no .d.ts
+bot.on(message.create, (ctx) => {
+  ctx.myService.doThing() // typed automatically
 })
 ```
 
-For nested handlers (button/select callbacks), construct controls via the bot-bound factories so decorators thread through:
+For nested handlers (button/select callbacks), construct controls via the bot-bound factories so decorators
+thread through:
 
 ```ts
-bot.on(message.create, async (ctx) => {
-  await ctx.reply('Pick:', {
-    controls: [
-      bot.row(
-        bot.button.callback(name('Confirm'))
-          .id('confirm')
-          .on(async (innerCtx) => {
-            innerCtx.myService.log('clicked') // typed
-          }),
-      ),
-    ],
-  })
-})
+bot.row(
+  bot.button.callback(name('Confirm')).on((ctx) => {
+    ctx.myService.log('clicked') // typed
+  }),
+)
 ```
 
-The standalone `button.callback(...)` / `command(...)` / `row(...)` exports still work — they default to `Bot<{}>`, so nested handlers won't see plugin types.
+## Testing
+
+`bot.dispatch(event)` runs an event through the bot without a connection, and `fetch` can be replaced in the
+options, so handlers can be tested without the network.
 
 ## License
 
