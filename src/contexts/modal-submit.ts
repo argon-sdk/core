@@ -1,50 +1,49 @@
-import type { ApiClient } from '../api/client'
 import type { ModalSubmitPayload } from '../events'
-import type { Snowflake, User } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
+import type { ContextDeps } from './base'
 
 import { InteractionContext } from './interaction'
 import { EventType } from '../events'
+import { dataOf } from './control-interaction'
 
-/** Context for modal form submission events */
-export class ModalSubmitContext extends InteractionContext {
-  private readonly payload: ModalSubmitPayload
+/**
+ * Context for modal form submissions.
+ *
+ * The server cannot acknowledge a modal submit, so `ack()`/`defer()` do nothing here; answer with `reply()`.
+ */
+export class ModalSubmitContext extends InteractionContext<ModalSubmitPayload> {
+  protected override readonly answerable = false
 
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: ModalSubmitPayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.ModalSubmit, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+  constructor(deps: ContextDeps, eventId: string, payload: ModalSubmitPayload) {
+    super(deps, eventId, EventType.ModalSubmit, payload)
   }
 
-  get interactionId(): Snowflake {
-    return this.payload.interactionId
+  /**
+   * The modal's custom id (first argument of `modal(id, title)`). The server only reports the modal's
+   * interaction id; it is mapped back for modals shown by this process, and returned as is otherwise.
+   */
+  get id(): string {
+    return this.api.interactions.modalCustomId(this.payload.customId)
   }
-  get channelId(): Snowflake {
-    return this.payload.channelId
+  /** The part of the modal id after the first `:`, `null` without one */
+  get data(): string | null {
+    return dataOf(this.id)
   }
-  get spaceId(): Snowflake {
-    return this.payload.spaceId
+  /** The interaction id of the shown modal (`modalInteractionId`) */
+  get modalInteractionId(): string {
+    return this.payload.customId
   }
-  get userId(): Snowflake {
-    return this.payload.user.userId
-  }
-  get user(): User {
-    return this.payload.user
-  }
-  get modalInteractionId(): Snowflake {
-    return this.payload.modalInteractionId
-  }
+  /** Submitted values by component id */
   get values(): Record<string, string> {
-    return this.payload.values
+    return Object.fromEntries(this.payload.values.map((v) => [v.customId, v.values[0] ?? '']))
   }
 
+  /** The submitted value of a component */
   value(customId: string): string | undefined {
-    return this.payload.values[customId]
+    return this.payload.values.find((v) => v.customId === customId)?.values[0]
+  }
+
+  /** Whether a checkbox component was ticked */
+  checked(customId: string): boolean {
+    return this.value(customId) === 'true'
   }
 }

@@ -1,81 +1,108 @@
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
-import type { ApiClient, SendMessageResponse } from '../api/client'
-import type { Message } from '../types'
-import type { Archetype } from '../types'
-import type { MessageEntity } from '../types'
-import type { Snowflake } from '../types'
-import type { Row } from '../types'
-import type { Visibility } from '../types'
+import type { SendMessageResponse } from '../api/client'
+import type { MessageCreatePayload } from '../events'
+import type { Attachment, Message, MessageEntity, Snowflake, User } from '../types'
+import type { ContextDeps } from './base'
+import type { MessageContent, ReplyOptions } from './types'
+
 import { BaseContext } from './base'
-import { resolveVisibility } from './visibility'
 import { EventType } from '../events'
-import { VisibilityScope } from '../types'
+import { EntityType, UserFlags } from '../types'
+import { sendMessage } from './send'
 
 /** Options for replying to a newly created message */
-export interface MessageCreateReplyOptions {
-  entities?: MessageEntity[]
-  replyTo?: Snowflake
-  controls?: Row[]
-  visibility?: Visibility
-}
+export type MessageCreateReplyOptions = ReplyOptions
 
 /** Context for the message creation event */
-export class MessageCreateContext extends BaseContext {
-  readonly message: Message
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    message: Message,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.MessageCreate, registerControlHandler, registerSelectHandler, services)
-    this.message = message
+export class MessageCreateContext extends BaseContext<MessageCreatePayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: MessageCreatePayload) {
+    super(deps, eventId, EventType.MessageCreate, payload)
   }
 
-  get senderId(): Snowflake {
-    return this.message.sender
+  get message(): Message {
+    return this.payload.message
+  }
+  get messageId(): Snowflake {
+    return this.payload.message.messageId
   }
   get channelId(): Snowflake {
-    return this.message.channelId
+    return this.payload.channelId
   }
   get spaceId(): Snowflake {
-    return this.message.spaceId
+    return this.payload.spaceId
   }
   get text(): string {
-    return this.message.text
+    return this.payload.message.text
   }
   get entities(): MessageEntity[] {
-    return this.message.entities
+    return this.payload.message.entities
   }
   get replyId(): Snowflake | null {
-    return this.message.replyId
+    return this.payload.message.replyId
+  }
+  /** The author; `null` for system messages */
+  get user(): User | null {
+    return this.payload.message.sender
+  }
+  /** The author's id; `null` for system messages */
+  get userId(): Snowflake | null {
+    return this.payload.message.sender?.userId ?? null
+  }
+  /** @deprecated Use `userId` */
+  get senderId(): Snowflake | null {
+    return this.userId
+  }
+  /** The author's app language, `null` when unknown */
+  get locale(): string | null {
+    return this.payload.message.sender?.locale ?? null
+  }
+  /** Files attached to the message */
+  get attachments(): Attachment[] {
+    return this.payload.message.attachments ?? []
+  }
+  /** True for messages from bots (including this one), webhooks and the system */
+  get isFromBot(): boolean {
+    const { sender, webhook } = this.payload.message
+    return sender === null || webhook !== null || (sender.flags & (UserFlags.Bot | UserFlags.System)) !== 0
+  }
+  /** True when this bot wrote the message */
+  get isFromSelf(): boolean {
+    return this.me !== null && this.userId === this.me.userId
   }
 
-  reply(text: string, options: MessageCreateReplyOptions = {}): Promise<SendMessageResponse> {
-    this.extractControlHandlers(options.controls)
-    this.extractSelectHandlers(options.controls)
-
-    return this.api.messages.send({
-      channelId: this.channelId,
-      text,
-      entities: options.entities,
-      replyTo: options.replyTo,
-      controls: options.controls,
-      visibility: options.visibility,
-    })
+  /** True when the message mentions `userId` (defaults to this bot) */
+  mentions(userId: Snowflake | undefined = this.me?.userId): boolean {
+    return (
+      userId !== undefined &&
+      this.entities.some((e) => e.type === EntityType.Mention && (e as { userId: Snowflake }).userId === userId)
+    )
   }
 
-  whisper(text: string, options: Omit<MessageCreateReplyOptions, 'visibility'> = {}): Promise<SendMessageResponse> {
-    return this.reply(text, {
-      ...options,
-      visibility: { scope: VisibilityScope.User, userId: this.senderId },
-    })
+  /** Replies to this message (pass `replyTo: null` for a plain message) */
+  reply(content: MessageContent, options: ReplyOptions = {}): Promise<SendMessageResponse> {
+    return sendMessage(this.api, this.channelId, content, { replyTo: this.messageId, ...options })
   }
 
-  visibilityFor(userId: Snowflake, filter?: (archetype: Archetype) => boolean): Promise<Visibility> {
-    return resolveVisibility(this.api, this.spaceId, userId, filter)
+  /** Posts a message in the same channel without replying */
+  send(content: MessageContent, options: Omit<ReplyOptions, 'replyTo'> = {}): Promise<SendMessageResponse> {
+    return sendMessage(this.api, this.channelId, content, options)
+  }
+
+  /** Reacts to this message with a unicode emoji or a custom emoji (`{ itemId }`) */
+  react(emoji: string | { itemId: Snowflake }): Promise<void> {
+    return typeof emoji === 'string'
+      ? this.api.reactions.add(this.channelId, this.messageId, emoji)
+      : this.api.reactions.addCustom(this.spaceId, this.channelId, this.messageId, emoji.itemId)
+  }
+
+  /** Removes the bot's reaction from this message */
+  unreact(emoji: string | { itemId: Snowflake }): Promise<void> {
+    return typeof emoji === 'string'
+      ? this.api.reactions.remove(this.channelId, this.messageId, emoji)
+      : this.api.reactions.removeCustom(this.spaceId, this.channelId, this.messageId, emoji.itemId)
+  }
+
+  /** Shows a typing indicator in the channel for 8 seconds */
+  typing(kind?: 'typing' | 'thinking' | 'uploading' | 'searching'): Promise<void> {
+    return this.api.typing.start(this.channelId, kind)
   }
 }

@@ -1,8 +1,13 @@
-import type { Snowflake } from '../types'
-import type { Message } from '../types'
-import type { Channel } from '../types'
-import type { Archetype } from '../types'
-import type { User } from '../types'
+import type {
+  Snowflake,
+  Message,
+  ChannelInfo,
+  Archetype,
+  User,
+  VoiceState,
+  BotPresence,
+  ExpressionsDelta,
+} from '../types'
 
 /** All supported SSE event type identifiers */
 export const EventType = {
@@ -34,6 +39,7 @@ export const EventType = {
   VoiceLeave: 'voiceLeave',
   CallIncoming: 'callIncoming',
   CallEnded: 'callEnded',
+  ExpressionsUpdate: 'expressionsUpdate',
 } as const
 
 /** Union of all event type string literals */
@@ -42,32 +48,48 @@ export type EventType = (typeof EventType)[keyof typeof EventType]
 /** Alias for EventType used in SSE transport */
 export type SseEventType = EventType
 
-/** Payload received when a user interacts with a button or control */
-export interface ControlInteractionPayload {
+/** Fields shared by all interaction events */
+interface InteractionPayloadBase {
   interactionId: Snowflake
-  controlId: string
-  controlType: string
-  messageId: string
   channelId: Snowflake
   spaceId: Snowflake
   user: User
+  /** Present when the user is in a voice channel */
+  voiceState: VoiceState | null
 }
 
-/** A single resolved option value from a command interaction */
+/** Payload received when a user clicks a callback button */
+export interface ControlInteractionPayload extends InteractionPayloadBase {
+  /** Always `0` (button) */
+  controlType: number
+  messageId: Snowflake
+  /** The button's id */
+  controlId: string
+}
+
+/** Command option type values as sent on the wire */
+export const CommandOptionType = {
+  String: 0,
+  Integer: 1,
+  Boolean: 2,
+  User: 3,
+  Channel: 4,
+  Role: 5,
+  Number: 6,
+} as const
+
+/** A single option value from a command interaction */
 export interface CommandOptionValue {
   name: string
-  type: string
-  value: unknown
+  type: number
+  /** Integer/Number/Boolean values are parsed; user/channel/role values are ids */
+  value: string | number | boolean
 }
 
 /** Payload received when a user invokes a slash command */
-export interface CommandInteractionPayload {
-  interactionId: Snowflake
+export interface CommandInteractionPayload extends InteractionPayloadBase {
   commandId: Snowflake
   commandName: string
-  spaceId: Snowflake
-  channelId: Snowflake
-  user: User
   options: CommandOptionValue[]
 }
 
@@ -83,9 +105,13 @@ export interface MessageEditPayload {
   messageId: Snowflake
   channelId: Snowflake
   spaceId: Snowflake
+  /** New text; entities and controls are not reported */
+  text: string | null
+  /** ISO-8601 timestamp */
+  updatedAt: string
 }
 
-/** Payload received when a member joins a space */
+/** Payload received when a member joins a space, or their profile changes */
 export interface MemberJoinPayload {
   spaceId: Snowflake
   user: User
@@ -106,7 +132,7 @@ export interface MemberUpdatePayload {
 /** Payload received when a channel is created */
 export interface ChannelCreatePayload {
   spaceId: Snowflake
-  data: Channel
+  channel: ChannelInfo
 }
 
 /** Payload received when a channel is deleted */
@@ -120,11 +146,14 @@ export interface TypingPayload {
   spaceId: Snowflake
   channelId: Snowflake
   userId: Snowflake
+  /** `typingStart` only, upper case on the wire: `TYPING`, `THINKING`, `UPLOADING`, `SEARCHING` */
+  kind?: string | null
 }
 
 /** Payload received when an archetype (role) is created or updated */
 export interface ArchetypeEventPayload {
-  archetype: Archetype
+  /** `permissions` is always `null` in events */
+  archetype: Omit<Archetype, 'permissions'> & { permissions: null }
   spaceId: Snowflake
 }
 
@@ -133,93 +162,52 @@ export interface BotSpacePayload {
   spaceId: Snowflake
 }
 
-/** Payload received when the bot's required entitlements diverge from a space's granted set */
+/** Payload received when the bot's required entitlements exceed a space's granted set (also on every connect) */
 export interface BotEntitlementsUpdatedPayload {
-  grantedEntitlements: EntitlementName
-  requiredEntitlements: EntitlementName
+  /** Entitlement bitmask as a decimal string */
+  grantedEntitlements: string
+  /** Entitlement bitmask as a decimal string */
+  requiredEntitlements: string
   spaceId: Snowflake
 }
 
-/** Payload received when a user interacts with a select menu */
-export interface SelectInteractionPayload {
-  interactionId: Snowflake
-  controlId: string
-  controlType: string
-  messageId: string
-  channelId: Snowflake
-  spaceId: Snowflake
-  user: User
+/** Payload received when a user submits a select menu */
+export interface SelectInteractionPayload extends InteractionPayloadBase {
+  /** 1 string, 2 user, 3 archetype, 4 channel select */
+  controlType: number
+  /** The select's custom id */
+  customId: string
+  messageId: Snowflake
+  /** Option values, or user/archetype/channel ids */
+  values: string[]
+}
+
+/** One answered component of a submitted modal */
+export interface ModalSubmitValue {
+  customId: string
+  /** Exactly one value; checkboxes report `"true"` / `"false"` */
   values: string[]
 }
 
 /** Payload received when a user submits a modal form */
 export interface ModalSubmitPayload {
+  /** Not usable with ack/defer/modal */
   interactionId: Snowflake
-  modalInteractionId: Snowflake
+  /** The `modalInteractionId` returned by `IInteractions/Modal` (not the modal's own custom id) */
+  customId: string
   channelId: Snowflake
   spaceId: Snowflake
   user: User
-  values: Record<string, string>
+  values: ModalSubmitValue[]
+  voiceState: VoiceState | null
 }
 
-/** Wire-format string-enum names for entitlements (matches the API enum, distinct from the BigInt bitmask `Entitlement`) */
-export type EntitlementName =
-  | 'none'
-  | 'viewChannel'
-  | 'readHistory'
-  | 'joinToVoice'
-  | 'sendMessages'
-  | 'sendVoice'
-  | 'attachFiles'
-  | 'addReactions'
-  | 'anyMentions'
-  | 'mentionEveryone'
-  | 'externalEmoji'
-  | 'externalStickers'
-  | 'useCommands'
-  | 'postEmbeddedLinks'
-  | 'connect'
-  | 'speak'
-  | 'video'
-  | 'stream'
-  | 'useASIO'
-  | 'additionalStreams'
-  | 'disconnectMember'
-  | 'moveMember'
-  | 'banMember'
-  | 'muteMember'
-  | 'kickMember'
-  | 'manageChannels'
-  | 'manageArchetype'
-  | 'manageBots'
-  | 'manageEvents'
-  | 'manageBehaviour'
-  | 'manageServer'
-
-/** Per-space membership info delivered in the Ready event */
+/** Space membership info delivered in the Ready event */
 export interface BotSpaceInfo {
   spaceId: Snowflake
-  grantedEntitlements: EntitlementName
+  /** Entitlement bitmask as a decimal string */
+  grantedEntitlements: string
   pendingApproval: boolean
-}
-
-/** Possible user presence statuses */
-export type PresenceStatus = 'offline' | 'online' | 'away' | 'inGame' | 'listen' | 'touchGrass' | 'doNotDisturb'
-
-/** Kind of activity a user is currently engaged in */
-export type ActivityKind = 'game' | 'software' | 'streaming' | 'listen'
-
-/** Describes a user's current activity */
-export interface PresenceActivity {
-  kind: ActivityKind
-  startTimestampSeconds: number
-  titleName: string
-}
-
-/** Bot or user presence with status and optional activity */
-export interface BotPresence {
-  activity: PresenceActivity
-  status: PresenceStatus
 }
 
 /** Payload received when a user's presence changes */
@@ -232,13 +220,19 @@ export interface PresenceUpdatePayload {
 /** Payload received when a reaction is added or removed */
 export interface ReactionPayload {
   channelId: Snowflake
-  emoji: string
   messageId: Snowflake
   spaceId: Snowflake
   userId: Snowflake
+  /** Unicode emoji, or `:name:` for a custom emoji */
+  emoji: string
+  /** Set for custom emoji */
+  customEmojiId: Snowflake | null
+  emojiName: string | null
+  /** `null` once the custom emoji was deleted */
+  emojiUrl: string | null
 }
 
-/** Payload received when a user joins a voice channel */
+/** Payload received when a user joins or leaves a voice channel */
 export interface VoiceJoinPayload {
   spaceId: Snowflake
   channelId: Snowflake
@@ -256,6 +250,8 @@ export interface VoiceLeavePayload {
 export interface CallIncomingPayload {
   callId: Snowflake
   fromUserId: Snowflake
+  /** The caller's language, for picking a voice */
+  fromLocale: string | null
 }
 
 /** Payload received when an active call ends */
@@ -263,17 +259,37 @@ export interface CallEndedPayload {
   callId: Snowflake
 }
 
-/** Payload received on initial SSE connection */
+/** Payload received when a space's stickers or custom emoji change */
+export interface ExpressionsUpdatePayload {
+  spaceId: Snowflake
+  version: string
+  /** Apply `delta` only if this equals the version you hold; otherwise re-read `expressions.list()` */
+  baseVersion: string | null
+  delta: ExpressionsDelta | null
+}
+
+/** Payload received on connection */
 export interface ReadyPayload {
   intents: number
   spaces: BotSpaceInfo[]
 }
 
+/** Payload of the keep-alive sent after 30 s without events */
+export interface HeartbeatPayload {
+  /** Milliseconds since the Argon epoch, 2025-01-01T00:00:00Z */
+  timestamp: number
+}
+
+/** Payload of the resume notification (defined by the API, not currently sent by the server) */
+export interface ResumedPayload {
+  replayedCount: number
+}
+
 /** Maps each event type string to its corresponding payload type */
 export interface SseEventMap {
   ready: ReadyPayload
-  heartbeat: null
-  resumed: null
+  heartbeat: HeartbeatPayload
+  resumed: ResumedPayload
 
   messageCreate: MessageCreatePayload
   messageEdit: MessageEditPayload
@@ -310,13 +326,14 @@ export interface SseEventMap {
 
   callIncoming: CallIncomingPayload
   callEnded: CallEndedPayload
+
+  expressionsUpdate: ExpressionsUpdatePayload
 }
 
 /** A single SSE event with typed payload */
 export interface SseEvent<T extends keyof SseEventMap = keyof SseEventMap> {
+  /** Opaque cursor; not usable for resuming */
   id: string
   type: T
   data: SseEventMap[T]
-  spaceId: Snowflake | null
-  channelId: Snowflake | null
 }

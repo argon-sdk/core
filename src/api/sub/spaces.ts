@@ -5,7 +5,7 @@ import type { Snowflake } from '../../types'
 export interface BotSpaceDetail {
   spaceId: Snowflake
   name: string
-  description: string
+  description: string | null
   isCommunity: boolean
 }
 

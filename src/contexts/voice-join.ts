@@ -1,25 +1,14 @@
-import type { ApiClient } from '../api/client'
+import type { ContextDeps } from './base'
 import type { VoiceJoinPayload } from '../events'
 import type { Snowflake, User } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
 
-/** Context for the voice join event */
-export class VoiceJoinContext extends BaseContext {
-  private readonly payload: VoiceJoinPayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: VoiceJoinPayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.VoiceJoin, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+/** Context for a user joining a voice channel */
+export class VoiceJoinContext extends BaseContext<VoiceJoinPayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: VoiceJoinPayload) {
+    super(deps, eventId, EventType.VoiceJoin, payload)
   }
 
   get spaceId(): Snowflake {
@@ -44,5 +33,10 @@ export class VoiceJoinContext extends BaseContext {
 
   get username(): string {
     return this.payload.user.username
+  }
+
+  /** The user's app language, `null` when unknown */
+  get locale(): string | null {
+    return this.payload.user.locale ?? null
   }
 }

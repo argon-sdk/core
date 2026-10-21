@@ -13,49 +13,17 @@ export {
   reaction,
   voice,
   call,
+  expressions,
   ready,
   heartbeat,
   resumed,
 } from './tokens'
 
-export { EventType } from './types'
+export { EventType, CommandOptionType } from './types'
 
-export type {
-  SseEventType,
-  SseEventMap,
-  SseEvent,
-  MessageCreatePayload,
-  MessageEditPayload,
-  MemberJoinPayload,
-  MemberLeavePayload,
-  MemberUpdatePayload,
-  ChannelCreatePayload,
-  ChannelDeletePayload,
-  TypingPayload,
-  ControlInteractionPayload,
-  CommandInteractionPayload,
-  CommandOptionValue,
-  ArchetypeEventPayload,
-  BotSpacePayload,
-  SelectInteractionPayload,
-  ModalSubmitPayload,
-  ReactionPayload,
-  PresenceUpdatePayload,
-  BotPresence,
-  PresenceActivity,
-  PresenceStatus,
-  ActivityKind,
-  ReadyPayload,
-  BotSpaceInfo,
-  BotEntitlementsUpdatedPayload,
-  EntitlementName,
-  VoiceJoinPayload,
-  VoiceLeavePayload,
-  CallIncomingPayload,
-  CallEndedPayload,
-} from './types'
+export type * from './types'
 
-export { text } from '../filters/predicates'
+export { text, inSpace, inChannel, fromUser } from '../filters/predicates'
 
 export { MessageCreateContext } from '../contexts/message-create'
 export { ControlInteractionContext } from '../contexts/control-interaction'

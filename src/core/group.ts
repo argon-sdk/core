@@ -3,10 +3,16 @@ import type { Filter } from '../filters/base'
 import type { Middleware } from './middleware'
 
 import { MiddlewarePipeline } from './middleware'
+import { runHandlers } from './on'
 
 /** Callback used inside a group to register conditional sub-handlers */
 export type GroupUse<C extends BaseContext> = (predicate: (ctx: C) => boolean, ...handlers: Middleware<C>[]) => void
 
+/**
+ * Creates a router for events matching `filter`: the first branch whose predicate matches handles the
+ * event, and falls through to the next branch only if its last handler calls `next()`.
+ * Like `on()`, the group itself never blocks later subscriptions.
+ */
 export function createGroup<C extends BaseContext>(filter: Filter<C>, setup: (use: GroupUse<C>) => void): Middleware {
   const pipeline = new MiddlewarePipeline<C>()
 
@@ -16,27 +22,17 @@ export function createGroup<C extends BaseContext>(filter: Filter<C>, setup: (us
         return next()
       }
 
-      let index = 0
-
-      const run = async (): Promise<void> => {
-        if (index >= handlers.length) {
-          return next()
-        }
-
-        await handlers[index++]!(ctx, run)
-      }
-
-      return run()
+      return runHandlers(ctx, handlers, next)
     })
   }
 
   setup(use)
 
-  return (ctx, next) => {
-    if (ctx.event !== filter.event || !filter.match(ctx as C)) {
-      return next()
+  return async (ctx, next) => {
+    if (ctx.event === filter.event && filter.match(ctx as C)) {
+      await pipeline.execute(ctx as C)
     }
 
-    return pipeline.execute(ctx as C)
+    await next()
   }
 }

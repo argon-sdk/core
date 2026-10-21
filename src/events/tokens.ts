@@ -21,6 +21,7 @@ import type { VoiceJoinContext } from '../contexts/voice-join'
 import type { VoiceLeaveContext } from '../contexts/voice-leave'
 import type { CallIncomingContext } from '../contexts/call-incoming'
 import type { CallEndedContext } from '../contexts/call-ended'
+import type { ExpressionsUpdateContext } from '../contexts/expressions-update'
 import type { Filter } from '../filters/base'
 import type { MessageCreateFilter } from '../filters/message-create'
 import type { ControlInteractionFilter } from '../filters/control-interaction'
@@ -151,11 +152,18 @@ export const call: {
   ended: makeFilter<CallEndedContext>(EventType.CallEnded, () => true),
 }
 
+/** Event filters for sticker and custom emoji changes */
+export const expressions: {
+  update: Filter<ExpressionsUpdateContext>
+} = {
+  update: makeFilter<ExpressionsUpdateContext>(EventType.ExpressionsUpdate, () => true),
+}
+
 /** Event filter for the initial ready event after connection */
 export const ready: Filter<ReadyContext> = makeFilter<ReadyContext>(EventType.Ready, () => true)
 
 /** Event filter for heartbeat keep-alive events */
 export const heartbeat: Filter<HeartbeatContext> = makeFilter<HeartbeatContext>(EventType.Heartbeat, () => true)
 
-/** Event filter for session resume events after reconnection */
+/** Event filter for session resume events (defined by the API, not currently sent by the server) */
 export const resumed: Filter<ResumedContext> = makeFilter<ResumedContext>(EventType.Resumed, () => true)

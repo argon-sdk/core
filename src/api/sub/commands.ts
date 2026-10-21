@@ -7,17 +7,20 @@ export interface CommandOption {
   description: string
   nameLocalizations?: Record<string, string>
   descriptionLocalizations?: Record<string, string>
-  type: 'string' | 'integer' | 'boolean' | 'user' | 'channel' | 'role' | 'number'
+  /** A `CommandOptionType` value: String 0, Integer 1, Boolean 2, User 3, Channel 4, Role 5, Number 6 */
+  type: number
   required?: boolean
-  choices?: {
-    name: string
-    value: unknown
-    nameLocalizations?: Record<string, string>
-  }[]
-  subOptions?: CommandOption[]
+  choices?:
+    | {
+        name: string
+        value: unknown
+        nameLocalizations?: Record<string, string>
+      }[]
+    | null
+  subOptions?: CommandOption[] | null
 }
 
-/** Parameters for registering a new slash command */
+/** Parameters for registering a slash command (an upsert by name and scope). Names are 1–32 characters and lower-cased */
 export interface RegisterCommandParams {
   name: string
   description: string

@@ -4,8 +4,6 @@ import type { Snowflake } from '../primitives'
 export interface Space {
   spaceId: Snowflake
   name: string
-  description: string
-  avatarFieldId: string | null
-  topBannerFileId: string | null
-  memberCount: number
+  description: string | null
+  isCommunity: boolean
 }

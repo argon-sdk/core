@@ -1,25 +1,14 @@
-import type { ApiClient } from '../api/client'
+import type { ContextDeps } from './base'
 import type { CallEndedPayload } from '../events'
 import type { Snowflake } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
 
-/** Context for a call that has ended */
-export class CallEndedContext extends BaseContext {
-  private readonly payload: CallEndedPayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: CallEndedPayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.CallEnded, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+/** Context for a call ending (verified bots only) */
+export class CallEndedContext extends BaseContext<CallEndedPayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: CallEndedPayload) {
+    super(deps, eventId, EventType.CallEnded, payload)
   }
 
   get callId(): Snowflake {

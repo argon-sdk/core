@@ -4,10 +4,13 @@ import type { Filter } from '../filters/base'
 
 const HANDLED = Symbol('argon:handled')
 
-function runHandlers<C extends BaseContext>(
+const done = async (): Promise<void> => {}
+
+/** Runs `handlers` as a chain: each one continues to the next by calling `next()` */
+export function runHandlers<C extends BaseContext>(
   ctx: C,
   handlers: Middleware<C>[],
-  next: () => Promise<void>,
+  next: () => Promise<void> = done,
 ): Promise<void> {
   let index = 0
 
@@ -22,26 +25,48 @@ function runHandlers<C extends BaseContext>(
   return run()
 }
 
-/** Creates a middleware that runs handlers when the event matches the given filter */
+/** Marks the event as handled so `otherwise()` subscriptions skip it */
+export function markHandled(ctx: BaseContext): void {
+  ;(ctx as unknown as Record<symbol, boolean>)[HANDLED] = true
+}
+
+/** True when an earlier `on()` subscription already matched this event */
+export function isHandled(ctx: BaseContext): boolean {
+  return (ctx as unknown as Record<symbol, boolean>)[HANDLED] === true
+}
+
+/**
+ * Creates a subscription for events matching `filter`.
+ *
+ * Subscriptions fan out: every matching `on()` runs, in registration order, whether or not an earlier
+ * one called `next()`. Inside one subscription the handlers form a chain, so a guard can stop the
+ * handlers after it by not calling `next()`:
+ *
+ * ```ts
+ * bot.on(message.create, onlyAdmins, handleAdminMessage) // onlyAdmins decides whether handleAdminMessage runs
+ * bot.on(message.create, logMessage)                     // runs for every message regardless
+ * ```
+ *
+ * To stop all later subscriptions, use a `bot.use()` middleware that does not call `next()`.
+ */
 export function on<C extends BaseContext>(filter: Filter<C>, ...handlers: Middleware<C>[]): Middleware {
-  return (ctx, next) => {
-    if (ctx.event !== filter.event || !filter.match(ctx as C)) {
-      return next()
+  return async (ctx, next) => {
+    if (ctx.event === filter.event && filter.match(ctx as C)) {
+      markHandled(ctx)
+      await runHandlers(ctx as C, handlers)
     }
 
-    ;(ctx as unknown as Record<symbol, boolean>)[HANDLED] = true
-
-    return runHandlers(ctx as C, handlers, next)
+    await next()
   }
 }
 
-/** Creates a middleware that runs handlers only if no prior `on()` has handled the event */
+/** Creates a subscription that runs only if no earlier `on()` matched the event */
 export function otherwise<C extends BaseContext>(filter: Filter<C>, ...handlers: Middleware<C>[]): Middleware {
-  return (ctx, next) => {
-    if (ctx.event !== filter.event || !filter.match(ctx as C) || (ctx as unknown as Record<symbol, boolean>)[HANDLED]) {
-      return next()
+  return async (ctx, next) => {
+    if (ctx.event === filter.event && filter.match(ctx as C) && !isHandled(ctx)) {
+      await runHandlers(ctx as C, handlers)
     }
 
-    return runHandlers(ctx as C, handlers, next)
+    await next()
   }
 }

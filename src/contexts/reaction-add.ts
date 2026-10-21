@@ -1,25 +1,14 @@
-import type { ApiClient } from '../api/client'
+import type { ContextDeps } from './base'
 import type { ReactionPayload } from '../events'
 import type { Snowflake } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
 
-/** Context for the reaction added event */
-export class ReactionAddContext extends BaseContext {
-  private readonly payload: ReactionPayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: ReactionPayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.ReactionAdd, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+/** Context for a reaction being added */
+export class ReactionAddContext extends BaseContext<ReactionPayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: ReactionPayload) {
+    super(deps, eventId, EventType.ReactionAdd, payload)
   }
 
   get spaceId(): Snowflake {
@@ -38,7 +27,26 @@ export class ReactionAddContext extends BaseContext {
     return this.payload.userId
   }
 
+  /** Unicode emoji, or `:name:` for a custom emoji */
   get emoji(): string {
     return this.payload.emoji
+  }
+
+  get isCustom(): boolean {
+    return this.payload.customEmojiId !== null
+  }
+
+  /** The custom emoji's item id */
+  get customEmojiId(): Snowflake | null {
+    return this.payload.customEmojiId
+  }
+
+  get emojiName(): string | null {
+    return this.payload.emojiName
+  }
+
+  /** Image of the custom emoji; `null` once it was deleted */
+  get emojiUrl(): string | null {
+    return this.payload.emojiUrl
   }
 }

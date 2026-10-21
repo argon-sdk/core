@@ -2,24 +2,31 @@ import type { Transport } from '../transport/transport'
 import type { BotHooks } from './hooks'
 import type { Middleware } from './middleware'
 import type { Filter } from '../filters/base'
-import { BaseContext } from '../contexts/base'
 import type { ContextMap } from '../contexts/registry'
+import type { ContextDeps } from '../contexts/base'
 import type { GroupUse } from './group'
 import type { SseOptions } from '../transport/sse'
 import type { BuiltCommand, CommandDefinition, CommandToken, ExtractOpts } from '../commands'
 import type { CommandContext } from '../contexts/command-interaction'
 import type { Snowflake } from '../types'
-import type { ControlHandler, SelectHandler, Row, ControlBuilder } from '../controls'
+import type { Row, ControlBuilder } from '../controls'
 import type { Plugin } from './plugin'
 import type { ButtonNamespace, SelectNamespace, ModalBuilder, ModalDefinition, ModalControlDef } from '../controls'
-import type { SseEventMap, ControlInteractionPayload, SelectInteractionPayload } from '../events'
+import type { SseEvent } from '../events'
+import type { ApiClientOptions } from '../api/base'
+import type { BotSelf } from '../api/client'
 
 import { ApiClient } from '../api/client'
+import type { BaseContext } from '../contexts/base'
+import { InteractionContext } from '../contexts/interaction'
+import { ControlInteractionContext } from '../contexts/control-interaction'
+import { SelectInteractionContext } from '../contexts/select-interaction'
+import { MessageCreateContext } from '../contexts/message-create'
 import { SseTransport } from '../transport/sse'
 import { MiddlewarePipeline } from './middleware'
-import { buildContext } from '../contexts/registry'
+import { buildContext, CONTEXT_CLASSES } from '../contexts/registry'
 import { createGroup } from './group'
-import { Intent } from '../types'
+import { EVENT_INTENTS, Intent, intentNames } from '../types/intents'
 import { syncCommands } from '../commands'
 import { command as _commandGlobal, CommandBuilder } from '../commands'
 import {
@@ -31,20 +38,40 @@ import {
   modal as _modalGlobal,
   row as _rowGlobal,
 } from '../controls'
-import { on } from './on'
+import { ControlRegistry } from '../controls/registry'
+import { on, markHandled } from './on'
 import { invoke } from '../filters/command-interaction'
 import { makeFilter } from '../filters/base'
-import { ControlInteractionContext } from '../contexts/control-interaction'
-import { SelectInteractionContext } from '../contexts/select-interaction'
+import { ArgonError } from '../errors'
 import { EventType } from '../events'
 
 /** Configuration options for the Bot instance */
-export interface BotOptions {
-  baseUrl?: string
+export interface BotOptions extends ApiClientOptions {
+  /**
+   * Extra intents to subscribe to. Intents needed by the events you subscribe to with `on()`,
+   * `group()`, `commands()` and inline control handlers are added automatically, so this is only
+   * needed for events consumed through `bot.use()` middleware.
+   */
   intents?: number
   sse?: SseOptions
   hooks?: BotHooks
-  debug?: boolean
+  /** Maximum number of events handled at the same time (default 32). `1` processes events strictly in order. */
+  concurrency?: number
+  /** Drop events caused by the bot itself: its own messages, typing and reactions (default `true`) */
+  ignoreSelf?: boolean
+  interactions?: {
+    /**
+     * Milliseconds after which an interaction nobody answered yet is deferred, so the user sees a loading
+     * state and a later `reply()` still works (default 2500). `false` disables it.
+     */
+    autoDeferAfter?: number | false
+  }
+  controls?: {
+    /** Inline `.on()` handlers kept in memory per kind before the least recently used are dropped (default 5000) */
+    maxInlineHandlers?: number
+  }
+  /** Replaces the SSE transport (tests, custom gateways) */
+  transport?: Transport
 }
 
 /** Options for registering commands, optionally scoped to a specific space */
@@ -52,7 +79,21 @@ export interface CommandsOptions {
   spaceId?: Snowflake
 }
 
-const DEFAULT_BASE_URL = 'https://gateway.argon.zone'
+type PluginValues<P extends readonly Plugin[]> = {
+  readonly [Pl in P[number] as Pl['name']]: ReturnType<Pl['build']>
+}
+
+/** Instance fields of every context (prototype members are checked separately) */
+const CONTEXT_FIELDS = new Set(['api', 'eventId', 'event', 'payload', 'me', '_services'])
+const DEFAULT_CONCURRENCY = 32
+const DEFAULT_AUTO_DEFER_MS = 2_500
+const SELF_EVENTS = new Set<string>([
+  EventType.MessageCreate,
+  EventType.TypingStart,
+  EventType.TypingStop,
+  EventType.ReactionAdd,
+  EventType.ReactionRemove,
+])
 
 /**
  * Main bot class that manages transport, middleware pipeline, plugins and event handling.
@@ -65,61 +106,77 @@ const DEFAULT_BASE_URL = 'https://gateway.argon.zone'
 export class Bot<TDec extends Record<string, unknown> = {}> {
   readonly api: ApiClient
 
-  private readonly _services = new Map<string, unknown>()
-  private readonly pipeline: MiddlewarePipeline
+  private readonly services = new Map<string, unknown>()
+  private readonly pipeline = new MiddlewarePipeline()
   private readonly hooks: BotHooks
   private readonly transport: Transport
-  private readonly registeredCommands: Array<{
-    command: BuiltCommand
-    spaceId?: Snowflake
-  }> = []
-
-  private readonly controlHandlers = new Map<string, ControlHandler>()
-  private readonly selectHandlers = new Map<string, SelectHandler>()
+  private readonly controls: ControlRegistry
+  private readonly registeredCommands: Array<{ command: BuiltCommand; spaceId?: Snowflake }> = []
+  private readonly concurrency: number
+  private readonly ignoreSelf: boolean
+  private readonly autoDeferAfter: number | false
+  private readonly explicitIntents: number | undefined
+  private requiredIntents = Intent.ControlInteractions
+  private self: BotSelf | null = null
   private abortController: AbortController | null = null
-
-  private readonly registerControlHandler = (controlId: string, handler: ControlHandler): void => {
-    this.controlHandlers.set(controlId, handler)
-  }
-
-  private readonly registerSelectHandler = (controlId: string, handler: SelectHandler): void => {
-    this.selectHandlers.set(controlId, handler)
-  }
+  private running: Promise<void> | null = null
 
   constructor(token: string, options: BotOptions = {}) {
-    const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL
-    const intents = options.intents ?? Intent.Messages
-    const debug = options.debug ?? false
-
-    this.api = new ApiClient(token, baseUrl, debug)
-    this.pipeline = new MiddlewarePipeline()
+    this.api = new ApiClient(token, options)
     this.hooks = options.hooks ?? {}
-    this.transport = new SseTransport(token, baseUrl, intents, options.sse, debug)
+    this.concurrency = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY)
+    this.ignoreSelf = options.ignoreSelf ?? true
+    this.autoDeferAfter = options.interactions?.autoDeferAfter ?? DEFAULT_AUTO_DEFER_MS
+    this.explicitIntents = options.intents
+    this.controls = new ControlRegistry(options.controls?.maxInlineHandlers)
+    this.api.controlSink = (rows) => this.controls.register(rows)
+    this.transport =
+      options.transport ??
+      new SseTransport(token, this.api.baseUrl, () => this.intents, options.sse, options.debug ?? false)
   }
 
-  plugin<TName extends string, TValue>(
-    ...plugins: Plugin<TName, TValue>[]
-  ): Bot<TDec & { readonly [K in TName]: TValue }> {
-    for (const p of plugins) {
-      const value = p.build()
-      this._services.set(p.name, value)
-
-      Object.defineProperty(BaseContext.prototype, p.name, {
-        get() {
-          return (this as any)._services.get(p.name)
-        },
-        configurable: true,
-      })
-
-      Object.defineProperty(this, p.name, {
-        get: () => value,
-        configurable: true,
-      })
+  /** The bot's own profile; available once `start()` has connected */
+  get me(): BotSelf {
+    if (!this.self) {
+      throw new ArgonError('bot.me is available after bot.start() has connected')
     }
 
-    return this as unknown as Bot<TDec & { readonly [K in TName]: TValue }>
+    return this.self
   }
 
+  /** Intents the event stream subscribes with: explicit ones plus those required by registered handlers */
+  get intents(): number {
+    return (this.explicitIntents ?? 0) | this.requiredIntents
+  }
+
+  /**
+   * Registers plugins. Each plugin's value becomes available as `ctx[plugin.name]` in every handler
+   * and as `bot[plugin.name]`, typed automatically.
+   */
+  plugin<const P extends readonly Plugin[]>(...plugins: P): Bot<TDec & PluginValues<P>> & TDec & PluginValues<P> {
+    for (const p of plugins) {
+      if (this.services.has(p.name)) {
+        throw new ArgonError(`Plugin "${p.name}" is already registered`)
+      }
+
+      const clash = CONTEXT_FIELDS.has(p.name) || CONTEXT_CLASSES.some((cls) => p.name in cls.prototype)
+
+      if (clash || p.name in this) {
+        throw new ArgonError(`Plugin name "${p.name}" clashes with a built-in property; pick another name`)
+      }
+
+      const value = p.build()
+      this.services.set(p.name, value)
+      Object.defineProperty(this, p.name, { get: () => value, configurable: true, enumerable: true })
+    }
+
+    return this as unknown as Bot<TDec & PluginValues<P>> & TDec & PluginValues<P>
+  }
+
+  /**
+   * Adds middleware that sees every event before later subscriptions. Middleware that does not call
+   * `next()` stops the event from reaching anything registered after it.
+   */
   use(...middlewares: Middleware<BaseContext & TDec>[]): this {
     for (const middleware of middlewares) {
       this.pipeline.use(middleware as Middleware)
@@ -128,60 +185,44 @@ export class Bot<TDec extends Record<string, unknown> = {}> {
     return this
   }
 
+  /**
+   * Subscribes to events. Every matching subscription runs, in registration order. Handlers passed
+   * together form a chain: each continues to the next by calling `next()`.
+   */
   on<C extends BaseContext>(filter: Filter<C>, ...handlers: Middleware<C & TDec>[]): this
   on<K extends keyof ContextMap>(event: K, ...handlers: Middleware<ContextMap[K] & TDec>[]): this
   on(filterOrEvent: Filter | string, ...handlers: Middleware[]): this {
-    if (typeof filterOrEvent === 'string') {
-      const filter = makeFilter(filterOrEvent as keyof SseEventMap, () => true)
-      this.pipeline.use(on(filter, ...handlers))
-    } else {
-      this.pipeline.use(on(filterOrEvent, ...handlers))
-    }
-
+    const filter = this.toFilter(filterOrEvent)
+    this.require(filter.event)
+    this.pipeline.use(on(filter, ...handlers))
     return this
   }
 
+  /** Routes matching events to the first branch whose predicate matches */
   group<C extends BaseContext>(filter: Filter<C>, setup: (use: GroupUse<C & TDec>) => void): this
   group<K extends keyof ContextMap>(event: K, setup: (use: GroupUse<ContextMap[K] & TDec>) => void): this
   group(filterOrEvent: Filter | string, setup: (use: GroupUse<any>) => void): this {
-    if (typeof filterOrEvent === 'string') {
-      const filter = makeFilter(filterOrEvent as keyof SseEventMap, () => true)
-      this.pipeline.use(createGroup(filter, setup))
-    } else {
-      this.pipeline.use(createGroup(filterOrEvent, setup))
-    }
-
+    const filter = this.toFilter(filterOrEvent)
+    this.require(filter.event)
+    this.pipeline.use(createGroup(filter, setup))
     return this
   }
 
+  /** Registers slash commands; they are synced with the server on `start()` */
   commands(...args: [...BuiltCommand<TDec>[], CommandsOptions] | BuiltCommand<TDec>[]): this {
     const last = args[args.length - 1]
     const hasOptions = last !== null && typeof last === 'object' && !('name' in last)
     const options: CommandsOptions = hasOptions ? (last as CommandsOptions) : {}
     const commandList = (hasOptions ? args.slice(0, -1) : args) as BuiltCommand<TDec>[]
 
+    this.require(EventType.CommandInteraction)
+
     for (const builtCommand of commandList) {
-      this.registeredCommands.push({
-        command: builtCommand as BuiltCommand,
-        spaceId: options.spaceId,
-      })
+      this.registeredCommands.push({ command: builtCommand as BuiltCommand, spaceId: options.spaceId })
 
       this.pipeline.use(
         on(invoke.name(builtCommand.name), async (ctx: CommandContext) => {
-          const opts: Record<string, unknown> = {}
-
-          for (const { key, meta } of builtCommand.options) {
-            if (meta.type === 'user') {
-              opts[key] = await ctx.resolveOption(key, 'user')
-            } else if (meta.type === 'channel') {
-              opts[key] = await ctx.resolveOption(key, 'channel')
-            } else if (meta.type === 'role') {
-              opts[key] = await ctx.resolveOption(key, 'role')
-            } else {
-              opts[key] = ctx.rawOptions[key]
-            }
-          }
-
+          const opts = await ctx.resolveOptions(builtCommand.options)
           await builtCommand.handler(ctx as CommandContext & TDec, opts)
         }),
       )
@@ -235,87 +276,170 @@ export class Bot<TDec extends Record<string, unknown> = {}> {
     return _rowGlobal(...controls)
   }
 
-  async start(): Promise<void> {
-    this.abortController = new AbortController()
-
-    await this.api.self.getMe()
-
-    if (this.registeredCommands.length > 0) {
-      const bySpace = new Map<string | undefined, BuiltCommand[]>()
-
-      for (const { command: builtCommand, spaceId } of this.registeredCommands) {
-        const key = spaceId ?? undefined
-        const group = bySpace.get(key) ?? []
-        group.push(builtCommand)
-        bySpace.set(key, group)
-      }
-
-      for (const [spaceId, commandGroup] of bySpace) {
-        await syncCommands(this.api, commandGroup, spaceId ?? null)
-      }
+  /**
+   * Connects, syncs commands and processes events. The returned promise settles only when the bot
+   * stops (`bot.stop()` or a fatal error), so code after `await bot.start()` runs after shutdown;
+   * use `hooks.onStart` or `bot.on(ready, ...)` for start-up work.
+   */
+  start(): Promise<void> {
+    if (this.running) {
+      throw new ArgonError('Bot is already running')
     }
 
-    await this.hooks.onStart?.()
+    this.running = this.run().finally(() => {
+      this.running = null
+    })
+
+    return this.running
+  }
+
+  /** Stops receiving events and resolves once in-flight handlers have finished */
+  async stop(): Promise<void> {
+    this.abortController?.abort()
+    await this.running?.catch(() => {})
+  }
+
+  /** Processes a single event as if it came from the gateway (tests, custom transports) */
+  async dispatch(event: SseEvent): Promise<void> {
+    const ctx = buildContext(this.deps(), event)
+
+    for (const [name, value] of this.services) {
+      Object.defineProperty(ctx, name, { value, enumerable: false })
+    }
+
+    if (this.ignoreSelf && this.isOwnEvent(ctx)) {
+      return
+    }
+
+    const isInteraction = ctx instanceof InteractionContext
+
+    if (isInteraction && this.autoDeferAfter !== false) {
+      ctx.autoDeferAfter(this.autoDeferAfter)
+    }
 
     try {
-      for await (const event of this.transport.start(this.abortController.signal)) {
-        try {
-          if (event.type === EventType.ControlInteraction) {
-            const payload = event.data as ControlInteractionPayload
-            const handler = this.controlHandlers.get(payload.controlId)
+      const inline = this.inlineHandler(ctx)
 
-            if (handler) {
-              const ctx = new ControlInteractionContext(
-                this.api,
-                event.id ?? '',
-                payload,
-                this.registerControlHandler,
-                this.registerSelectHandler,
-                this._services,
-              )
-              await handler(ctx)
-              continue
-            }
-          }
+      if (inline) {
+        markHandled(ctx)
+      }
 
-          if (event.type === EventType.SelectInteraction) {
-            const payload = event.data as SelectInteractionPayload
-            const handler = this.selectHandlers.get(payload.controlId)
+      const completed = await this.pipeline.execute(ctx)
 
-            if (handler) {
-              const ctx = new SelectInteractionContext(
-                this.api,
-                event.id ?? '',
-                payload,
-                this.registerControlHandler,
-                this.registerSelectHandler,
-                this._services,
-              )
-              await handler(ctx)
-              continue
-            }
-          }
+      // Inline handlers run last, so `bot.use()` middleware (auth, logging) wraps them too
+      if (inline && completed) {
+        await inline()
+      }
+    } catch (error) {
+      await this.reportError(error, ctx)
+    } finally {
+      if (isInteraction) {
+        await ctx.settle().catch((error) => this.reportError(error, ctx))
+      }
+    }
+  }
 
-          const ctx = buildContext(
-            this.api,
-            event,
-            this.registerControlHandler,
-            this.registerSelectHandler,
-            this._services,
-          )
-          await this.pipeline.execute(ctx)
-        } catch (error) {
-          if (error instanceof Error) {
-            await this.hooks.onError?.(error)
-          }
+  private async run(): Promise<void> {
+    this.abortController = new AbortController()
+    const signal = this.abortController.signal
+
+    this.self = await this.api.self.getMe()
+    this.warnAboutIntents()
+
+    await this.syncRegisteredCommands()
+    await this.hooks.onStart?.()
+
+    const inFlight = new Set<Promise<void>>()
+
+    try {
+      for await (const event of this.transport.start(signal)) {
+        while (inFlight.size >= this.concurrency) {
+          await Promise.race(inFlight)
         }
+
+        const task: Promise<void> = this.dispatch(event).finally(() => inFlight.delete(task))
+        inFlight.add(task)
       }
     } finally {
+      await Promise.allSettled(inFlight)
       await this.hooks.onStop?.()
     }
   }
 
-  async stop(): Promise<void> {
-    this.abortController?.abort()
+  private deps(): ContextDeps {
+    return { api: this.api, services: this.services, me: this.self }
+  }
+
+  private inlineHandler(ctx: BaseContext): (() => Promise<void>) | null {
+    if (ctx instanceof ControlInteractionContext) {
+      const handler = this.controls.button(ctx.id)
+      return handler ? async () => void (await handler(ctx)) : null
+    }
+
+    if (ctx instanceof SelectInteractionContext) {
+      const handler = this.controls.select(ctx.id)
+      return handler ? async () => void (await handler(ctx)) : null
+    }
+
+    return null
+  }
+
+  private isOwnEvent(ctx: BaseContext): boolean {
+    if (!this.self || !SELF_EVENTS.has(ctx.event)) {
+      return false
+    }
+
+    const actor = ctx instanceof MessageCreateContext ? ctx.userId : (ctx as { userId?: Snowflake | null }).userId
+    return actor === this.self.userId
+  }
+
+  private async reportError(error: unknown, ctx: BaseContext): Promise<void> {
+    const err = error instanceof Error ? error : new ArgonError(`Non-error thrown: ${String(error)}`, { cause: error })
+
+    if (this.hooks.onError) {
+      try {
+        await this.hooks.onError(err, ctx)
+      } catch (hookError) {
+        console.error('[argon] onError hook threw:', hookError)
+      }
+    } else {
+      console.error(`[argon] Unhandled error in ${ctx.event} handler:`, err)
+    }
+  }
+
+  private async syncRegisteredCommands(): Promise<void> {
+    const bySpace = new Map<string | undefined, BuiltCommand[]>()
+
+    for (const { command: builtCommand, spaceId } of this.registeredCommands) {
+      const group = bySpace.get(spaceId) ?? []
+      group.push(builtCommand)
+      bySpace.set(spaceId, group)
+    }
+
+    for (const [spaceId, commandGroup] of bySpace) {
+      await syncCommands(this.api, commandGroup, spaceId ?? null)
+    }
+  }
+
+  private toFilter(filterOrEvent: Filter | string): Filter {
+    return typeof filterOrEvent === 'string' ? makeFilter(filterOrEvent as Filter['event'], () => true) : filterOrEvent
+  }
+
+  private require(event: string): void {
+    this.requiredIntents |= EVENT_INTENTS[event] ?? 0
+  }
+
+  private warnAboutIntents(): void {
+    if (this.explicitIntents === undefined) {
+      return
+    }
+
+    const added = this.requiredIntents & ~this.explicitIntents & ~Intent.ControlInteractions
+
+    if (added !== 0) {
+      console.warn(
+        `[argon] Subscribed handlers need intents you did not list; adding: ${intentNames(added).join(', ')}`,
+      )
+    }
   }
 }

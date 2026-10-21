@@ -1,36 +1,34 @@
-import type { ApiClient } from '../api/client'
-import type { BotEntitlementsUpdatedPayload, EntitlementName } from '../events'
+import type { ContextDeps } from './base'
+import type { BotEntitlementsUpdatedPayload } from '../events'
 import type { Snowflake } from '../types'
-import type { RegisterControlHandler, RegisterSelectHandler } from './base'
+import type { EntitlementName } from '../types/entitlement'
 
 import { BaseContext } from './base'
 import { EventType } from '../events'
+import { entitlementNames, toEntitlementMask } from '../types/entitlement'
 
-/** Context for the bot's required/granted entitlement set drifting in a space */
-export class BotEntitlementsUpdatedContext extends BaseContext {
-  private readonly payload: BotEntitlementsUpdatedPayload
-
-  constructor(
-    api: ApiClient,
-    eventId: string,
-    payload: BotEntitlementsUpdatedPayload,
-    registerControlHandler: RegisterControlHandler,
-    registerSelectHandler: RegisterSelectHandler,
-    services: Map<string, unknown> = new Map(),
-  ) {
-    super(api, eventId, EventType.BotEntitlementsUpdated, registerControlHandler, registerSelectHandler, services)
-    this.payload = payload
+/** Context for a space granting fewer entitlements than the bot requires (sent on every connect while that holds) */
+export class BotEntitlementsUpdatedContext extends BaseContext<BotEntitlementsUpdatedPayload> {
+  constructor(deps: ContextDeps, eventId: string, payload: BotEntitlementsUpdatedPayload) {
+    super(deps, eventId, EventType.BotEntitlementsUpdated, payload)
   }
 
   get spaceId(): Snowflake {
     return this.payload.spaceId
   }
 
-  get grantedEntitlements(): EntitlementName {
-    return this.payload.grantedEntitlements
+  /** Granted entitlements bitmask */
+  get grantedEntitlements(): bigint {
+    return toEntitlementMask(this.payload.grantedEntitlements)
   }
 
-  get requiredEntitlements(): EntitlementName {
-    return this.payload.requiredEntitlements
+  /** Required entitlements bitmask */
+  get requiredEntitlements(): bigint {
+    return toEntitlementMask(this.payload.requiredEntitlements)
+  }
+
+  /** Names of required entitlements the space has not granted */
+  get missing(): EntitlementName[] {
+    return entitlementNames(this.requiredEntitlements & ~this.grantedEntitlements)
   }
 }

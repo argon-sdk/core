@@ -1,22 +1,31 @@
 import type { Snowflake } from '../primitives'
 
-/** Available channel type identifiers */
+/** Channel type values, as sent to `channels.create()` and in channel events */
 export const ChannelType = {
-  Text: 'text',
-  Voice: 'voice',
-  Announcement: 'announcement',
+  Text: 0,
+  Voice: 1,
+  Announcement: 2,
 } as const
 
-/** Union of all channel type string literals */
+/** Union of channel type values */
 export type ChannelType = (typeof ChannelType)[keyof typeof ChannelType]
 
-/** Represents a channel within a space */
+/** A channel as returned by `channels.list()` / `channels.create()` */
 export interface Channel {
   channelId: Snowflake
   spaceId: Snowflake
-  channelType: ChannelType
   name: string
-  description: string
+  description: string | null
+  /** Note: the REST API reports the type by name */
+  channelType: 'Text' | 'Voice' | 'Announcement'
   groupId: Snowflake | null
-  isArchived: boolean
+}
+
+/** A channel as delivered in the `channelCreate` event */
+export interface ChannelInfo {
+  channelId: Snowflake
+  spaceId: Snowflake
+  type: ChannelType
+  name: string
+  description: string | null
 }

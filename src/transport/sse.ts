@@ -2,6 +2,7 @@ import type { SseEvent, SseEventType, SseEventMap } from '../events'
 import type { Transport } from './transport'
 
 import { TransportError } from '../errors'
+import { parseJson } from '../api/json'
 
 /** Configuration for SSE transport reconnection behavior */
 export interface SseOptions {
@@ -12,20 +13,28 @@ export interface SseOptions {
 const DEFAULT_RETRY_DELAY = 1_000
 const DEFAULT_MAX_RETRY_DELAY = 30_000
 const HEARTBEAT_TIMEOUT_MS = 45_000
+const FATAL_STATUSES = new Set([400, 401, 403])
 
 /** Server-Sent Events transport with automatic reconnection and heartbeat monitoring */
 export class SseTransport implements Transport {
   private readonly token: string
   private readonly baseUrl: string
-  private readonly intents: number
+  private readonly intents: () => number
   private readonly retryDelay: number
   private readonly maxRetryDelay: number
   private readonly debug: boolean
 
-  constructor(token: string, baseUrl: string, intents: number, options: SseOptions = {}, debug: boolean = false) {
+  /** `intents` may be a getter so the bot can add intents for handlers registered before `start()` */
+  constructor(
+    token: string,
+    baseUrl: string,
+    intents: number | (() => number),
+    options: SseOptions = {},
+    debug: boolean = false,
+  ) {
     this.token = token
     this.baseUrl = baseUrl.replace(/\/$/, '')
-    this.intents = intents
+    this.intents = typeof intents === 'function' ? intents : () => intents
     this.retryDelay = options.retryDelay ?? DEFAULT_RETRY_DELAY
     this.maxRetryDelay = options.maxRetryDelay ?? DEFAULT_MAX_RETRY_DELAY
     this.debug = debug
@@ -34,11 +43,12 @@ export class SseTransport implements Transport {
   async *start(signal: AbortSignal): AsyncIterable<SseEvent> {
     let lastEventId: string | null = null
     let currentRetryDelay = this.retryDelay
+    let fatal: TransportError | null = null
 
     while (!signal.aborted) {
       try {
         const url = new URL(`${this.baseUrl}/IEvents/v1/Stream`)
-        url.searchParams.set('intents', String(this.intents))
+        url.searchParams.set('intents', String(this.intents()))
 
         if (lastEventId !== null) {
           url.searchParams.set('lastEventId', lastEventId)
@@ -67,8 +77,17 @@ export class SseTransport implements Transport {
         })
 
         if (!response.ok) {
-          const body = await response.json().catch(() => null)
-          throw new TransportError(`SSE connection failed: HTTP ${response.status}`, { cause: body })
+          const body = await response.text().catch(() => '')
+          const error = new TransportError(`SSE connection failed: HTTP ${response.status} ${body}`.trim(), {
+            cause: body,
+          })
+
+          // A bad token or invalid intents will not fix itself by reconnecting
+          if (FATAL_STATUSES.has(response.status)) {
+            fatal = error
+          }
+
+          throw error
         }
 
         if (!response.body) {
@@ -97,6 +116,10 @@ export class SseTransport implements Transport {
           break
         }
 
+        if (fatal) {
+          throw fatal
+        }
+
         if (!(error instanceof Error)) {
           throw new TransportError('Unknown SSE error', { cause: error })
         }
@@ -121,6 +144,7 @@ export class SseTransport implements Transport {
 
     let buffer = ''
     let currentEvent: Partial<RawSseEvent> = {}
+    let dataLines: string[] = []
     let heartbeatTimer: ReturnType<typeof setTimeout> | null = null
 
     const resetHeartbeat = () => {
@@ -166,10 +190,13 @@ export class SseTransport implements Transport {
 
           if (trimmed === '') {
             if (currentEvent.type !== undefined) {
+              // Per the SSE spec, multiple `data:` lines form one payload joined by newlines
+              currentEvent.data = parseData(dataLines.join('\n'))
               yield currentEvent as RawSseEvent
             }
 
             currentEvent = {}
+            dataLines = []
             continue
           }
 
@@ -189,11 +216,7 @@ export class SseTransport implements Transport {
           if (field === 'event') {
             currentEvent.type = value as SseEventType
           } else if (field === 'data') {
-            try {
-              currentEvent.data = JSON.parse(value)
-            } catch {
-              currentEvent.data = value as unknown as SseEventMap[SseEventType]
-            }
+            dataLines.push(value)
           } else if (field === 'id') {
             currentEvent.id = value
           }
@@ -221,6 +244,18 @@ export class SseTransport implements Transport {
         { once: true },
       )
     })
+  }
+}
+
+function parseData(raw: string): SseEventMap[SseEventType] {
+  if (raw.length === 0) {
+    return null as unknown as SseEventMap[SseEventType]
+  }
+
+  try {
+    return parseJson(raw) as SseEventMap[SseEventType]
+  } catch {
+    return raw as unknown as SseEventMap[SseEventType]
   }
 }
 
